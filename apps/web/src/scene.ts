@@ -33,10 +33,18 @@ const clock = new THREE.Clock();
 
 const EMPTY_RGB = [27, 25, 19] as const;
 const TERRITORY_RGB = PLAYER_COLORS.map(hexToRgb);
-const TRAIL_RGB = TERRITORY_RGB.map((c) => c.map((v) => Math.round(v + (255 - v) * 0.5)));
+// A trail is drawn as a 2x2 checker of the player's colour and a dimmed
+// version of it, so it reads as a dotted line next to solid territory of the
+// same colour. Brightness alone was not enough for light colours.
+const TRAIL_DIM_RGB = TERRITORY_RGB.map((c) => c.map((v, k) => Math.round(v * 0.35 + EMPTY_RGB[k] * 0.65)));
 
-const pixels = new Uint8Array(GRID_W * GRID_H * 4);
-const boardTexture = new THREE.DataTexture(pixels, GRID_W, GRID_H, THREE.RGBAFormat);
+/** Texels per cell edge; the checker needs more than one. */
+const SUB = 2;
+const TEX_W = GRID_W * SUB;
+const TEX_H = GRID_H * SUB;
+
+const pixels = new Uint8Array(TEX_W * TEX_H * 4);
+const boardTexture = new THREE.DataTexture(pixels, TEX_W, TEX_H, THREE.RGBAFormat);
 boardTexture.magFilter = THREE.NearestFilter;
 boardTexture.minFilter = THREE.NearestFilter;
 boardTexture.colorSpace = THREE.SRGBColorSpace;
@@ -72,22 +80,38 @@ apron.rotation.x = -Math.PI / 2;
 apron.position.set(GRID_W / 2, -0.05, GRID_H / 2);
 scene.add(apron);
 
+function putTexel(x: number, y: number, rgb: readonly number[]): void {
+  const p = (y * TEX_W + x) * 4;
+  pixels[p] = rgb[0];
+  pixels[p + 1] = rgb[1];
+  pixels[p + 2] = rgb[2];
+  pixels[p + 3] = 255;
+}
+
 /** Paints the whole board from the two grid layers. */
 export function updateBoard(owner: Uint8Array, trail: Uint8Array): void {
   for (let z = 0; z < GRID_H; z++) {
-    const row = (GRID_H - 1 - z) * GRID_W;
+    // Texture rows run bottom-up; grid z runs top-down.
+    const ty = (GRID_H - 1 - z) * SUB;
     for (let x = 0; x < GRID_W; x++) {
       const i = z * GRID_W + x;
       const t = trail[i];
       const o = owner[i];
-      const rgb = t ? TRAIL_RGB[(t - 1) % TRAIL_RGB.length]
-        : o ? TERRITORY_RGB[(o - 1) % TERRITORY_RGB.length]
-        : EMPTY_RGB;
-      const p = (row + x) * 4;
-      pixels[p] = rgb[0];
-      pixels[p + 1] = rgb[1];
-      pixels[p + 2] = rgb[2];
-      pixels[p + 3] = 255;
+      const tx = x * SUB;
+      if (t) {
+        const bright = TERRITORY_RGB[(t - 1) % TERRITORY_RGB.length];
+        const dim = TRAIL_DIM_RGB[(t - 1) % TRAIL_DIM_RGB.length];
+        putTexel(tx, ty, bright);
+        putTexel(tx + 1, ty, dim);
+        putTexel(tx, ty + 1, dim);
+        putTexel(tx + 1, ty + 1, bright);
+      } else {
+        const rgb = o ? TERRITORY_RGB[(o - 1) % TERRITORY_RGB.length] : EMPTY_RGB;
+        putTexel(tx, ty, rgb);
+        putTexel(tx + 1, ty, rgb);
+        putTexel(tx, ty + 1, rgb);
+        putTexel(tx + 1, ty + 1, rgb);
+      }
     }
   }
   boardTexture.needsUpdate = true;

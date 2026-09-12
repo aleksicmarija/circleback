@@ -50,10 +50,15 @@ export const IDLE_WARN_MS = 15_000;
 /** A room with no humans in it is deleted after this long. */
 export const ROOM_IDLE_MS = 30_000;
 
-/** Per-player colours, indexed by slot. Saturated so paint reads on a dark floor. */
+/**
+ * Per-player colours, indexed by slot. Eight distinct hues, saturated so paint
+ * reads on a dark floor, and no white: white is reserved for the local
+ * player's rim and would make a trail indistinguishable from territory.
+ * Bots fill slots 0-5 first, so the first humans land on the last two.
+ */
 export const PLAYER_COLORS = [
-  0x38bdf8, 0xf472b6, 0x4ade80, 0xfacc15,
-  0xa78bfa, 0xf87171, 0xe2e8f0, 0xfb923c,
+  0xf87171, 0xfb923c, 0xfacc15, 0x2dd4bf,
+  0x60a5fa, 0xa78bfa, 0x4ade80, 0xf472b6,
 ] as const;
 
 /**
