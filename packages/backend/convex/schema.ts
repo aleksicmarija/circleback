@@ -23,4 +23,11 @@ export default defineSchema({
     yaw: v.number(),
     lastInputAt: v.number(),
   }).index("by_room", ["roomId"]),
+
+  // Pipeline smoke test only (apps/smoke + smoke.ts). Safe to delete later.
+  smoke_pings: defineTable({
+    sender: v.string(),
+    sentAt: v.number(),
+    at: v.number(),
+  }).index("by_at", ["at"]),
 });
