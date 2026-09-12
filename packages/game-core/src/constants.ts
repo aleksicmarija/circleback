@@ -19,11 +19,16 @@ export const RESPAWN_MS = 2500;
 /** Radius of the starting blob of territory. */
 export const SPAWN_RADIUS = 2;
 
-/** Hard cap per room, humans and bots combined. Also bounds the colour palette. */
-export const MAX_PLAYERS = 8;
+/** Hard cap on pieces per room: one colour per slot. Humans are otherwise unlimited. */
+export const MAX_PLAYERS = 16;
 
-/** Bots top a room up to this many players so it never feels empty. */
-export const MIN_PLAYERS = 6;
+/**
+ * The board never has fewer pieces than this. Bots make up the difference:
+ * a human joining a board at or above this size takes a bot's seat while any
+ * bot is left, beyond that humans simply join; a human leaving is replaced by
+ * a bot again whenever the count drops below it.
+ */
+export const MIN_PIECES = 7;
 
 export const MAX_NAME_LENGTH = 16;
 
@@ -51,14 +56,16 @@ export const IDLE_WARN_MS = 15_000;
 export const ROOM_IDLE_MS = 30_000;
 
 /**
- * Per-player colours, indexed by slot. Eight distinct hues, saturated so paint
- * reads on a dark floor, and no white: white is reserved for the local
- * player's rim and would make a trail indistinguishable from territory.
- * Bots fill slots 0-5 first, so the first humans land on the last two.
+ * Per-player colours, indexed by slot: MAX_PLAYERS distinct entries, saturated
+ * so paint reads on a dark floor, and no white, which is reserved for the
+ * local player's rim and would hide a trail against territory. The first
+ * eight are the most distinct hues; the second eight are lighter cousins.
  */
 export const PLAYER_COLORS = [
   0xf87171, 0xfb923c, 0xfacc15, 0x2dd4bf,
   0x60a5fa, 0xa78bfa, 0x4ade80, 0xf472b6,
+  0xa3e635, 0x22d3ee, 0xe879f9, 0xfdba74,
+  0x86efac, 0xc4b5fd, 0xfda4af, 0xfde68a,
 ] as const;
 
 /**

@@ -1,6 +1,6 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, MAX_PATCH_CELLS, IDLE_KICK_MS,
+  MAX_PLAYERS, MIN_PIECES, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, MAX_PATCH_CELLS, IDLE_KICK_MS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
@@ -158,16 +158,17 @@ export class Room {
     return n;
   }
 
-  /** Adds a player and spawns them. A human joining a full room evicts a bot. */
+  /**
+   * Adds a player and spawns them. A human arriving at a board that already
+   * has MIN_PIECES pieces takes the seat of the weakest bot while one is
+   * left; after that humans keep joining until the colours run out.
+   */
   addPlayer(name: string, isBot: boolean, now: number, skin?: string): Player {
-    let slot = this.freeSlot();
-    if (slot < 0 && !isBot) {
-      const bot = [...this.players.values()].find((p) => p.isBot);
-      if (bot) {
-        this.removePlayer(bot.id);
-        slot = this.freeSlot();
-      }
+    if (!isBot && this.players.size >= MIN_PIECES) {
+      const bot = this.weakestBot();
+      if (bot) this.removePlayer(bot.id);
     }
+    const slot = this.freeSlot();
     if (slot < 0) throw new RoomFullError();
 
     const player: Player = {
@@ -206,12 +207,31 @@ export class Room {
     this.flushGridLog();
   }
 
-  /** Tops the room up with bots to MIN_PLAYERS. */
+  /** Adds bots until the board has MIN_PIECES pieces. */
   ensureBots(now: number): void {
-    while (this.players.size < MIN_PLAYERS) {
+    while (this.players.size < MIN_PIECES) {
       const name = BOT_NAMES[this.nextBotName++ % BOT_NAMES.length];
       this.addPlayer(name, true, now);
     }
+  }
+
+  /** The bot whose removal disturbs the board least: a dead one, else the one holding the least land. */
+  private weakestBot(): Player | null {
+    if (this.countedVersion !== this.gridVersion) {
+      this.grid.count(this.counts);
+      this.countedVersion = this.gridVersion;
+    }
+    let weakest: Player | null = null;
+    let weakestScore = Infinity;
+    for (const p of this.players.values()) {
+      if (!p.isBot) continue;
+      const score = p.alive ? this.counts[p.slot + 1] : -1;
+      if (score < weakestScore) {
+        weakestScore = score;
+        weakest = p;
+      }
+    }
+    return weakest;
   }
 
   /** Lets an external brain (an LLM agent, for instance) narrate what a player is doing. */
