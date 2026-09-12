@@ -42,12 +42,19 @@ export function createConvexBackend(): Backend {
     watchRoom: (code, onSnapshot) => {
       // Convex queries cannot tell the server someone is watching, so say so
       // explicitly; the tick keeps bots playing for a room with a heartbeat.
-      const beat = () => void convex.mutation(api.game.watch, { code }).catch(() => {});
+      // Only while the page is actually visible: a hidden tab or a closed lid
+      // stops the heartbeat, and the room pauses instead of playing to nobody.
+      const beat = () => {
+        if (document.visibilityState !== "visible") return;
+        void convex.mutation(api.game.watch, { code }).catch(() => {});
+      };
       beat();
       const timer = setInterval(beat, WATCH_HEARTBEAT_MS);
+      document.addEventListener("visibilitychange", beat);
       const stop = convex.onUpdate(api.game.snapshot, { code }, (snap) => onSnapshot(toSnapshot(snap)));
       return () => {
         clearInterval(timer);
+        document.removeEventListener("visibilitychange", beat);
         stop();
       };
     },

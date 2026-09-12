@@ -1,7 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS, type Dir } from "@game/core";
+import { AUDIENCE_TICK_MS, IDLE_POLL_MS, ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS, type Dir } from "@game/core";
 import { byCode, gridByCode, hydrate, persist } from "./rooms";
 import type { MutationCtx } from "./_generated/server";
 
@@ -60,7 +60,8 @@ export const tick = internalMutation({
         return;
       }
       if (doc.emptySince === undefined) await ctx.db.patch(doc._id, { emptySince });
-      await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
+      // Paused: poll slowly rather than burning a function call every tick.
+      await ctx.scheduler.runAfter(IDLE_POLL_MS, internal.tick.tick, { code });
       return;
     }
 
@@ -69,6 +70,8 @@ export const tick = internalMutation({
     const { kicked } = room.step(now);
     await forgetPlayers(ctx, kicked);
     await persist(ctx, doc, grid, room, { emptySince: undefined });
-    await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
+    // Bots playing for a screen alone run at a slower, cheaper cadence.
+    const cadence = room.humanCount === 0 ? AUDIENCE_TICK_MS : TICK_MS;
+    await ctx.scheduler.runAfter(cadence, internal.tick.tick, { code });
   },
 });

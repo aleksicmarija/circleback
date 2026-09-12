@@ -7,6 +7,16 @@ export const GRID_H = 64;
 /** Simulation step. 100ms = 10 ticks/sec; movement is dt-based so this only affects smoothness and cost. */
 export const TICK_MS = 100;
 
+/**
+ * Slower step used by hosts that pay per tick when only spectators are
+ * watching and every piece is a bot. Keeps the screen alive at a fraction
+ * of the cost; the client's interpolator follows the observed frame spacing.
+ */
+export const AUDIENCE_TICK_MS = 250;
+
+/** How often a paused room (nobody playing or watching) checks whether to wake or delete itself. */
+export const IDLE_POLL_MS = 1000;
+
 /** Movement speed in cells per second. Players never stop moving. */
 export const PLAYER_SPEED = 6.5;
 

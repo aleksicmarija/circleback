@@ -19,6 +19,8 @@ const OFFSET_DRIFT = 0.002;
 
 const frames: Frame[] = [];
 const jitters: number[] = [];
+/** Server-time gap between consecutive frames; the feed slows to AUDIENCE_TICK_MS when only bots play. */
+const spacings: number[] = [];
 /** localClock - serverClock, estimated from the least-delayed snapshot seen. */
 let offset = 0;
 let haveOffset = false;
@@ -51,20 +53,34 @@ export function record(serverAt: number, players: PlayerSnapshot[]): void {
   if (jitters.length >= MIN_SAMPLES) {
     const sorted = [...jitters].sort((a, b) => a - b);
     const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))];
-    // One tick of buffer so a newer frame always exists, plus the jitter to absorb.
-    const target = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p95 + TICK_MS + DELAY_MARGIN_MS));
+    // One frame of buffer so a newer frame always exists, plus the jitter to
+    // absorb. The frame spacing is measured, not assumed: a room with only
+    // bots ticks slower, and the buffer has to grow with it.
+    const target = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p95 + frameSpacing() + DELAY_MARGIN_MS));
     delayMs += (target - delayMs) * DELAY_EASING;
   }
 
   const newest = frames[frames.length - 1];
   if (newest && serverAt <= newest.at) return; // stale or duplicate delivery
+  if (newest) {
+    spacings.push(serverAt - newest.at);
+    if (spacings.length > JITTER_SAMPLES) spacings.shift();
+  }
   frames.push({ at: serverAt, players });
   if (frames.length > MAX_FRAMES) frames.shift();
+}
+
+/** Typical gap between frames on the server clock; never less than one full-speed tick. */
+function frameSpacing(): number {
+  if (spacings.length < MIN_SAMPLES) return TICK_MS;
+  const sorted = [...spacings].sort((a, b) => a - b);
+  return Math.max(TICK_MS, sorted[Math.floor(0.5 * (sorted.length - 1))]);
 }
 
 export function reset(): void {
   frames.length = 0;
   jitters.length = 0;
+  spacings.length = 0;
   offset = 0;
   haveOffset = false;
   delayMs = INTERP_DELAY_MS;
