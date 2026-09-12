@@ -167,9 +167,13 @@ Optional `.env.local` settings (see `.env.example`):
   to subscribers. Snapshots carry a short log of changed cells, a few
   hundred bytes, instead of the 8 KB grid; a client that falls behind the
   log fetches the full grid once.
-- **The client renders 100ms in the past** (`INTERP_DELAY_MS`) so it always
-  has two snapshots to blend between. Respawns are detected as jumps and not
-  interpolated.
+- **Everyone else is rendered slightly in the past; you are rendered slightly
+  in the future.** The interpolator measures how evenly snapshots arrive and
+  renders other players just behind the worst recent gap, so motion stays
+  smooth without a fixed delay. Your own piece runs on a client-side
+  predictor with the server's movement rules, so a keypress turns it
+  immediately; each snapshot eases the prediction back toward the truth and
+  snaps it on surprises like wall bounces or respawns.
 - **Connections have a heartbeat.** A tab that vanishes without saying
   goodbye is dropped after 8s and its player removed. Rooms with no humans
   stop simulating and are deleted after 30s.

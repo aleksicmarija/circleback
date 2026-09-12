@@ -6,26 +6,58 @@ const MAX_FRAMES = 8;
 /** A jump longer than this between frames is a respawn, not movement. */
 const TELEPORT_CELLS = 3;
 
+/** Adaptive delay: track how evenly snapshots arrive and stay just behind the worst gaps. */
+const INTERVAL_SAMPLES = 40;
+const MIN_SAMPLES = 8;
+const DELAY_MARGIN_MS = 40;
+const MIN_DELAY_MS = 90;
+const MAX_DELAY_MS = 400;
+const DELAY_EASING = 0.1;
+
 const frames: Frame[] = [];
+const intervals: number[] = [];
+let lastArrivalAt = 0;
+let delayMs = INTERP_DELAY_MS;
 
 /** Called once per server snapshot, stamped with local arrival time. */
 export function record(players: PlayerSnapshot[]): void {
-  frames.push({ at: performance.now(), players });
+  const now = performance.now();
+  frames.push({ at: now, players });
   if (frames.length > MAX_FRAMES) frames.shift();
+
+  if (lastArrivalAt > 0) {
+    intervals.push(now - lastArrivalAt);
+    if (intervals.length > INTERVAL_SAMPLES) intervals.shift();
+    if (intervals.length >= MIN_SAMPLES) {
+      const sorted = [...intervals].sort((a, b) => a - b);
+      const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))];
+      const target = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p95 + DELAY_MARGIN_MS));
+      delayMs += (target - delayMs) * DELAY_EASING;
+    }
+  }
+  lastArrivalAt = now;
 }
 
 export function reset(): void {
   frames.length = 0;
+  intervals.length = 0;
+  lastArrivalAt = 0;
+  delayMs = INTERP_DELAY_MS;
+}
+
+/** How far behind the newest snapshot the scene is rendered right now, in ms. */
+export function currentDelay(): number {
+  return delayMs;
 }
 
 /**
- * Renders INTERP_DELAY_MS behind the newest snapshot, so there are always two
- * snapshots to blend between. This turns the server tick into smooth motion.
+ * Renders `currentDelay()` behind the newest snapshot, so there are always
+ * two snapshots to blend between. This turns the server tick into smooth motion.
  */
 export function sample(now: number): PlayerSnapshot[] {
   if (frames.length === 0) return [];
 
-  const target = now - INTERP_DELAY_MS;
+  const target = now - delayMs;
   let older: Frame | undefined;
   let newer: Frame | undefined;
 

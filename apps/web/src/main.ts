@@ -5,6 +5,7 @@ import * as scene from "./scene";
 import * as audio from "./audio";
 import * as interpolate from "./interpolate";
 import { GridSync } from "./gridsync";
+import { LocalPredictor } from "./prediction";
 import { onDirection } from "./input";
 
 const backend = createBackend();
@@ -15,6 +16,7 @@ let session: Session | null = null;
 let latest: Snapshot | null = null;
 let unsubscribe: (() => void) | null = null;
 let grid: GridSync | null = null;
+const predictor = new LocalPredictor();
 let hudUpdatedAt = 0;
 
 const HUD_INTERVAL_MS = 200;
@@ -72,6 +74,8 @@ function connect(next: Session): void {
     latest = incoming;
     grid?.apply(incoming);
     interpolate.record(incoming.players);
+    const me = incoming.players.find((p) => p.id === next.playerId);
+    if (me) predictor.onSnapshot(me, performance.now());
 
     const now = performance.now();
     if (now - hudUpdatedAt > HUD_INTERVAL_MS) {
@@ -88,17 +92,29 @@ function disconnect(): void {
   latest = null;
   grid = null;
   interpolate.reset();
+  predictor.reset();
   scene.clearPlayers();
 }
 
 onDirection((dir) => {
   ui.hideTouchHint();
-  if (session) backend.setDirection(session.playerId, dir);
+  if (!session) return;
+  predictor.onInput(dir, performance.now());
+  backend.setDirection(session.playerId, dir);
 });
+
+/** Everyone from the interpolated feed, except the local piece, which runs ahead on the predictor. */
+function viewsFor(now: number): PlayerSnapshot[] {
+  const views = interpolate.sample(now);
+  if (!session) return views;
+  const predicted = predictor.sample(now);
+  if (!predicted) return views;
+  return views.map((view) => (view.id === session!.playerId ? { ...view, ...predicted } : view));
+}
 
 function frame(): void {
   const now = performance.now();
-  scene.syncPlayers(interpolate.sample(now), session?.playerId ?? null);
+  scene.syncPlayers(viewsFor(now), session?.playerId ?? null);
   if (session && latest) ui.updateOverlay(latest, session.playerId);
   scene.render();
   requestAnimationFrame(frame);
