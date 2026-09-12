@@ -44,6 +44,7 @@ export default defineSchema({
         kills: v.number(),
         respawnAt: v.number(),
         killedBy: v.union(v.string(), v.null()),
+        lastInputAt: v.number(),
         bot: v.union(
           v.null(),
           v.object({

@@ -9,7 +9,7 @@ Belgrade, 12 September 2026.
 <!-- TODO: replace the two placeholder URLs below with the live Render URLs before submitting -->
 
 - 🎮 **Play:** https://circleback-web.onrender.com/ <sub>(placeholder)</sub>
-- 📺 **Watch the live match:** https://circleback-web.onrender.com/watch.html <sub>(placeholder)</sub>
+- 📺 **Watch the live match:** https://circleback-web.onrender.com/spectate <sub>(placeholder)</sub>
 - 🎥 **Demo video:** link coming with the submission
 - 💻 **Source:** https://github.com/aleksicmarija/circleback
 
@@ -31,6 +31,8 @@ Circleback is a territory game built from scratch in Three.js.
   trail, so don't cross yourself.
 - The arena edge bounces you 90 degrees to a random side. Death wipes your
   turf; you respawn somewhere fresh 2.5 seconds later.
+- Stop steering for 45 seconds and you are removed from the arena; the game
+  warns you 15 seconds before.
 - The **robots are AI agents**. Every room is topped up with them so it never
   feels empty, and a human joining a full room evicts one. The line under a
   robot's name tells you what it is doing right now.
@@ -99,7 +101,6 @@ we'd tackle them.
 **Presentation**
 - [ ] Generate a unique pet skin per player with **Fal.ai** from a prompt.
 - [ ] Rebuild the menu and HUD in **Wonder** so design edits ship as code.
-- [ ] Pretty `/watch` route on Render (today the page lives at `/watch.html`).
 
 ---
 
@@ -117,7 +118,7 @@ circleback/
 │                            from a document, tick it, and stream snapshots.
 ├── apps/web/                Three.js client. Talks only to the `Backend` interface in
 │                            src/backend/, with local and Convex implementations.
-│   └── watch.html           Spectator page: whole arena, leaderboard, QR code.
+│   └── spectate/index.html  Spectator page: whole arena, leaderboard, QR code.
 └── render.yaml              Render Blueprint for the static site.
 ```
 
@@ -128,9 +129,9 @@ npm install
 npm run dev:web      # http://localhost:5173 -- that's it, no accounts, no cloud
 ```
 
-Press **Play** to drop into the public arena. Open `/watch.html` on a big
+Press **Play** to drop into the public arena. Open `/spectate` on a big
 screen for the spectator view: whole arena, leaderboard, and a QR code that
-sends phones to the same room (`/watch.html?room=ABCD` for private rooms). Open a second tab and press Play
+sends phones to the same room (`/spectate?room=ABCD` for private rooms). Open a second tab and press Play
 again: both tabs share one SharedWorker, so you are playing against yourself.
 "Host new room" / "Join room" give you private 4-letter rooms.
 

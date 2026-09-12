@@ -6,15 +6,26 @@ import { byCode, hydrate, patchFromRoom } from "./rooms";
 import type { MutationCtx } from "./_generated/server";
 
 /** Applies and clears every queued direction change for a room, oldest first. */
-async function drainInputs(ctx: MutationCtx, code: string, apply: (playerId: string, dir: Dir) => void): Promise<void> {
+async function drainInputs(ctx: MutationCtx, code: string, apply: (playerId: string, dir: Dir, at: number) => void): Promise<void> {
   const pending = await ctx.db
     .query("inputs")
     .withIndex("by_code", (q) => q.eq("code", code))
     .collect();
   pending.sort((a, b) => a.at - b.at || a._creationTime - b._creationTime);
   for (const input of pending) {
-    apply(input.playerId, input.dir as Dir);
+    apply(input.playerId, input.dir as Dir, input.at);
     await ctx.db.delete(input._id);
+  }
+}
+
+/** Forgets the player -> room link of players the simulation removed. */
+async function forgetPlayers(ctx: MutationCtx, playerIds: string[]): Promise<void> {
+  for (const playerId of playerIds) {
+    const link = await ctx.db
+      .query("playerRooms")
+      .withIndex("by_player", (q) => q.eq("playerId", playerId))
+      .first();
+    if (link) await ctx.db.delete(link._id);
   }
 }
 
@@ -46,8 +57,9 @@ export const tick = internalMutation({
     }
 
     room.ensureBots(now);
-    await drainInputs(ctx, code, (playerId, dir) => room.setDirection(playerId, dir));
-    room.step(now);
+    await drainInputs(ctx, code, (playerId, dir, at) => room.setDirection(playerId, dir, at));
+    const { kicked } = room.step(now);
+    await forgetPlayers(ctx, kicked);
     await ctx.db.patch(doc._id, { emptySince: undefined, ...patchFromRoom(room, doc.gridVersion) });
     await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
   },

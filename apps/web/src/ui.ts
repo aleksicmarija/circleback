@@ -1,4 +1,4 @@
-import { PLAYER_COLORS, MAX_NAME_LENGTH, PET_SKINS, type Snapshot } from "@core";
+import { PLAYER_COLORS, MAX_NAME_LENGTH, PET_SKINS, IDLE_KICK_MS, IDLE_WARN_MS, type Snapshot } from "@core";
 import * as audio from "./audio";
 
 export type UiHandlers = {
@@ -196,13 +196,16 @@ export function updateHud(snapshot: Snapshot, localPlayerId: string): void {
   }
 }
 
-/** Death notice. Called every frame; only touches the DOM when the text changes. */
+/** Death notice and idle warning. Called every frame; only touches the DOM when the text changes. */
 export function updateOverlay(snapshot: Snapshot, localPlayerId: string): void {
   const me = snapshot.players.find((p) => p.id === localPlayerId);
   let text = "";
   if (me && !me.alive) {
     const reason = me.killedBy ? `Cut off by ${me.killedBy}` : "You crashed";
     text = `${reason}\nRespawning in ${(me.respawnIn / 1000).toFixed(1)}s`;
+  } else if (me && me.idleMs > IDLE_KICK_MS - IDLE_WARN_MS) {
+    const left = Math.max(0, Math.ceil((IDLE_KICK_MS - me.idleMs) / 1000));
+    text = `Still there?\nSteer or you leave the arena in ${left}s`;
   }
   if (text === overlayText) return;
   overlayText = text;

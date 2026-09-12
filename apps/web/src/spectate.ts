@@ -1,7 +1,7 @@
 /**
  * Spectator screen: the whole arena from above, the leaderboard, and a QR
  * code that sends phones into the same room. Meant for a projector.
- * Open as /watch.html or /watch.html?room=ABCD.
+ * Served at /spectate, or /spectate?room=ABCD for a private room.
  */
 import QRCode from "qrcode";
 import { DEFAULT_ROOM_CODE, PLAYER_COLORS, BOT_SKINS, PET_SKINS, type Snapshot } from "@core";
@@ -12,8 +12,8 @@ import { GridSync } from "./gridsync";
 
 const backend = createBackend();
 
-const board = document.getElementById("watch-board") as HTMLOListElement;
-const status = document.getElementById("watch-status") as HTMLDivElement;
+const board = document.getElementById("spectate-board") as HTMLOListElement;
+const status = document.getElementById("spectate-status") as HTMLDivElement;
 const roomCode = document.getElementById("room-code") as HTMLDivElement;
 const roomStats = document.getElementById("room-stats") as HTMLDivElement;
 const joinUrlEl = document.getElementById("join-url") as HTMLAnchorElement;

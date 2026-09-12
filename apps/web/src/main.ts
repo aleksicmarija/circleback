@@ -1,4 +1,4 @@
-import { BOT_SKINS, PET_SKINS, type PlayerSnapshot, type Snapshot } from "@core";
+import { BOT_SKINS, PET_SKINS, IDLE_KICK_MS, IDLE_WARN_MS, type PlayerSnapshot, type Snapshot } from "@core";
 import { createBackend } from "./backend";
 import * as ui from "./ui";
 import * as scene from "./scene";
@@ -62,8 +62,9 @@ function connect(next: Session): void {
       return;
     }
     if (!incoming.players.some((p) => p.id === next.playerId)) {
+      const wasIdle = (latest?.players.find((p) => p.id === next.playerId)?.idleMs ?? 0) > IDLE_KICK_MS - IDLE_WARN_MS;
       disconnect();
-      ui.showMenu("You were disconnected from the room.");
+      ui.showMenu(wasIdle ? "You were removed for inactivity. Jump back in!" : "You were disconnected from the room.");
       return;
     }
 

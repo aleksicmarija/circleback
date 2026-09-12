@@ -79,7 +79,7 @@ export class GameServer {
 
     if (message.type === "direction") {
       const code = connection.players.get(message.playerId);
-      if (code) this.rooms.get(code)?.room.setDirection(message.playerId, message.dir);
+      if (code) this.rooms.get(code)?.room.setDirection(message.playerId, message.dir, this.clock());
       return;
     }
 
@@ -200,7 +200,11 @@ export class GameServer {
       }
 
       entry.room.ensureBots(now);
-      entry.room.step(now);
+      const { kicked } = entry.room.step(now);
+      for (const playerId of kicked) {
+        this.owners.get(playerId)?.players.delete(playerId);
+        this.owners.delete(playerId);
+      }
 
       if (entry.subscribers.size === 0) continue;
       const snapshot = entry.room.snapshot(now, "patches");

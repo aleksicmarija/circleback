@@ -33,6 +33,12 @@ export const DEFAULT_ROOM_CODE = "MAIN";
 /** How many grid patches a room remembers; a client further behind than this refetches the full grid. */
 export const GRID_LOG_LENGTH = 6;
 
+/** A human who has not sent any input for this long is removed from the room. */
+export const IDLE_KICK_MS = 45_000;
+
+/** The client starts warning this long before the kick. */
+export const IDLE_WARN_MS = 15_000;
+
 /** A room with no humans in it is deleted after this long. */
 export const ROOM_IDLE_MS = 30_000;
 

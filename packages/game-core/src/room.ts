@@ -1,6 +1,6 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH,
+  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, IDLE_KICK_MS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
@@ -30,6 +30,8 @@ export type Player = {
   kills: number;
   respawnAt: number;
   killedBy: string | null;
+  /** When this player last joined or steered; humans idle past IDLE_KICK_MS are removed. */
+  lastInputAt: number;
   bot: BotState | null;
 };
 
@@ -185,6 +187,7 @@ export class Room {
       kills: 0,
       respawnAt: now,
       killedBy: null,
+      lastInputAt: now,
       bot: isBot ? createBotState(this.random) : null,
     };
     this.players.set(player.id, player);
@@ -217,15 +220,24 @@ export class Room {
     if (player) player.status = status;
   }
 
-  /** The only input a player has. Reversing into your own trail is refused. */
-  setDirection(id: PlayerId, dir: Dir): void {
+  /**
+   * The only input a player has. Reversing into your own trail is refused.
+   * Any input, even a refused one, counts as activity for the idle kick.
+   */
+  setDirection(id: PlayerId, dir: Dir, now?: number): void {
     const player = this.players.get(id);
-    if (!player || !player.alive) return;
+    if (!player) return;
+    if (now !== undefined) player.lastInputAt = now;
+    if (!player.alive) return;
     if (dir === opposite(player.dir)) return;
     player.nextDir = dir;
   }
 
-  step(now: number): void {
+  /**
+   * Advances the simulation. Returns the ids of humans removed for being
+   * idle, so the host can drop whatever it keeps per player.
+   */
+  step(now: number): { kicked: PlayerId[] } {
     // Clamp dt so a stalled host cannot fling everyone across the arena.
     const dt = this.lastStepAt === null ? 0 : Math.min((now - this.lastStepAt) / 1000, 0.25);
     this.lastStepAt = now;
@@ -250,7 +262,15 @@ export class Room {
     }
 
     this.resolveHeadOn(now);
+
+    const kicked: PlayerId[] = [];
+    for (const player of this.players.values()) {
+      if (!player.isBot && now - player.lastInputAt > IDLE_KICK_MS) kicked.push(player.id);
+    }
+    for (const id of kicked) this.removePlayer(id);
+
     this.flushGridLog();
+    return { kicked };
   }
 
   /** Both grid layers as they are right now, for a client that needs to resync. */
@@ -281,6 +301,7 @@ export class Room {
         kills: p.kills,
         respawnIn: p.alive ? 0 : Math.max(0, p.respawnAt - now),
         killedBy: p.killedBy,
+        idleMs: p.isBot ? 0 : Math.max(0, now - p.lastInputAt),
       });
     }
 

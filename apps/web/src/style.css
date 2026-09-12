@@ -117,7 +117,7 @@ button.icon {
 }
 
 /* ---- spectator page ---- */
-#watch-hud { position: fixed; inset: 0; pointer-events: none; }
+#spectate-hud { position: fixed; inset: 0; pointer-events: none; }
 #join-card {
   position: absolute; top: 18px; left: 18px; width: 264px; padding: 18px 20px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -135,19 +135,19 @@ button.icon {
 #room-code { margin-top: 10px; font: 34px var(--display); letter-spacing: 0.22em; color: var(--text); }
 #room-stats { font-size: 13px; color: var(--muted); }
 
-#watch-board {
+#spectate-board {
   position: absolute; top: 18px; right: 18px; margin: 0; padding: 12px 14px; list-style: none;
   min-width: 240px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
   font-size: 16px;
 }
-#watch-board li { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-#watch-board li.dead { opacity: 0.45; }
-#watch-board .rank { width: 1.4em; font: 15px var(--display); color: var(--muted); }
-#watch-board .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-#watch-board .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#watch-board .pct { font-variant-numeric: tabular-nums; color: var(--muted); }
+#spectate-board li { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+#spectate-board li.dead { opacity: 0.45; }
+#spectate-board .rank { width: 1.4em; font: 15px var(--display); color: var(--muted); }
+#spectate-board .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+#spectate-board .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#spectate-board .pct { font-variant-numeric: tabular-nums; color: var(--muted); }
 
-#watch-status {
+#spectate-status {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   font: 24px var(--display); color: var(--muted); text-align: center;
 }
@@ -155,5 +155,5 @@ button.icon {
 @media (max-width: 720px) {
   #join-card { width: 200px; padding: 12px; }
   #join-card #qr { width: 160px; height: 160px; }
-  #watch-board { min-width: 170px; font-size: 13px; }
+  #spectate-board { min-width: 170px; font-size: 13px; }
 }

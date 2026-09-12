@@ -20,11 +20,11 @@ services:
 
     routes:
       # Order matters: Render applies the FIRST matching rule, and rules only
-      # apply when no real file exists at the path. /watch.html itself is a
-      # real file and is served directly; this just gives it a tidier URL.
+      # apply when no real file exists at the path. The spectator page is
+      # built as spectate/index.html; this serves it at /spectate.
       - type: rewrite
-        source: /watch
-        destination: /watch.html
+        source: /spectate
+        destination: /spectate/index.html
       - type: rewrite
         source: /*
         destination: /index.html

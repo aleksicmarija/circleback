@@ -33,6 +33,8 @@ export type PlayerSnapshot = {
   respawnIn: number;
   /** Name of whoever cut this player off, while dead. */
   killedBy: string | null;
+  /** Milliseconds since this player last sent input; always 0 for bots. */
+  idleMs: number;
 };
 
 /** Cells that changed between two grid versions, as flat triples: index, owner, trail. */
