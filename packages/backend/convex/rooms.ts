@@ -17,7 +17,13 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 // place a Room is created or hydrated here supplies this instead.
 const makeId = (isBot: boolean): string => `${isBot ? "b" : "p"}_${crypto.randomUUID()}`;
 
-export function hydrate(doc: Doc<"rooms">): Room {
+/**
+ * Rebuilds a live Room. Pass the room's `grids` document to get a room you can
+ * drive (tick, join, leave). Pass null for a snapshot-only room: scores come
+ * from the persisted per-player `cells`, and the layers are only needed by a
+ * snapshot while the patch log is empty, which callers check first.
+ */
+export function hydrate(doc: Doc<"rooms">, grid: Doc<"grids"> | null): Room {
   const state: RoomState = {
     code: doc.code,
     tick: doc.tick,
@@ -25,8 +31,8 @@ export function hydrate(doc: Doc<"rooms">): Room {
     lastStepAt: doc.lastStepAt,
     nextId: doc.nextId,
     nextBotName: doc.nextBotName,
-    owner: new Uint8Array(doc.owner),
-    trail: new Uint8Array(doc.trail),
+    owner: grid ? new Uint8Array(grid.owner) : undefined,
+    trail: grid ? new Uint8Array(grid.trail) : undefined,
     gridLog: doc.gridLog.map((p) => ({ ...p, cells: new Uint8Array(p.cells) })),
     players: doc.players as PlayerState[],
   };
@@ -44,12 +50,15 @@ type RoomFields = {
   nextBotName: number;
   gridLog: WireGridPatch[];
   players: PlayerState[];
+};
+
+type GridFields = {
+  gridVersion: number;
   owner: ArrayBuffer;
   trail: ArrayBuffer;
 };
 
-/** The full row, for the initial insert -- owner/trail are required here. */
-function fieldsForInsert(room: Room): RoomFields {
+function roomFields(room: Room): RoomFields {
   const state = room.serialize();
   return {
     tick: state.tick,
@@ -59,28 +68,31 @@ function fieldsForInsert(room: Room): RoomFields {
     nextBotName: state.nextBotName,
     gridLog: toWireLog(state.gridLog),
     players: state.players,
-    owner: toArrayBuffer(state.owner),
-    trail: toArrayBuffer(state.trail),
   };
 }
 
-/** Fields to patch after driving a Room. Omits owner/trail when the grid didn't change. */
-export function patchFromRoom(room: Room, writtenGridVersion: number): Partial<RoomFields> {
+function gridFields(room: Room): GridFields {
   const state = room.serialize();
-  const patch: Partial<RoomFields> = {
-    tick: state.tick,
+  return {
     gridVersion: state.gridVersion,
-    lastStepAt: state.lastStepAt,
-    nextId: state.nextId,
-    nextBotName: state.nextBotName,
-    gridLog: toWireLog(state.gridLog),
-    players: state.players,
+    owner: toArrayBuffer(state.owner!),
+    trail: toArrayBuffer(state.trail!),
   };
-  if (state.gridVersion !== writtenGridVersion) {
-    patch.owner = toArrayBuffer(state.owner);
-    patch.trail = toArrayBuffer(state.trail);
-  }
-  return patch;
+}
+
+/**
+ * Writes a driven Room back: the room row every time, the grid row only when
+ * the grid changed since it was loaded. `extra` merges into the room row.
+ */
+export async function persist(
+  ctx: MutationCtx,
+  doc: Doc<"rooms">,
+  grid: Doc<"grids">,
+  room: Room,
+  extra: { emptySince?: number | undefined } = {},
+): Promise<void> {
+  await ctx.db.patch(doc._id, { ...extra, ...roomFields(room) });
+  if (room.gridVersion !== doc.gridVersion) await ctx.db.patch(grid._id, gridFields(room));
 }
 
 function toWireLog(log: RoomState["gridLog"]): WireGridPatch[] {
@@ -98,6 +110,13 @@ export async function byCode(ctx: QueryCtx, code: string): Promise<Doc<"rooms"> 
     .first();
 }
 
+export async function gridByCode(ctx: QueryCtx, code: string): Promise<Doc<"grids"> | null> {
+  return await ctx.db
+    .query("grids")
+    .withIndex("by_code", (q) => q.eq("code", code))
+    .first();
+}
+
 async function uniqueCode(ctx: MutationCtx): Promise<string> {
   for (;;) {
     let code = "";
@@ -111,7 +130,8 @@ function cleanName(name: string): string {
 }
 
 async function insertRoom(ctx: MutationCtx, code: string, room: Room): Promise<void> {
-  await ctx.db.insert("rooms", { code, ...fieldsForInsert(room) });
+  await ctx.db.insert("rooms", { code, ...roomFields(room) });
+  await ctx.db.insert("grids", { code, ...gridFields(room) });
   await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
 }
 
@@ -143,8 +163,10 @@ export const join = mutation({
     let doc = await byCode(ctx, targetCode);
     if (!doc && targetCode === DEFAULT_ROOM_CODE) doc = await createPublicArena(ctx);
     if (!doc) throw new ConvexError(`No room with code ${targetCode}`);
+    const grid = await gridByCode(ctx, doc.code);
+    if (!grid) throw new ConvexError(`Room ${targetCode} has no grid`);
 
-    const room = hydrate(doc);
+    const room = hydrate(doc, grid);
     let player;
     try {
       player = room.addPlayer(cleanName(name), false, Date.now(), skin);
@@ -153,7 +175,7 @@ export const join = mutation({
       throw error;
     }
 
-    await ctx.db.patch(doc._id, { emptySince: undefined, ...patchFromRoom(room, doc.gridVersion) });
+    await persist(ctx, doc, grid, room, { emptySince: undefined });
     await ctx.db.insert("playerRooms", { playerId: player.id, code: doc.code });
     return { code: doc.code, playerId: player.id };
   },
@@ -169,11 +191,12 @@ export const leave = mutation({
     if (!link) return;
 
     const doc = await byCode(ctx, link.code);
-    if (doc) {
-      const room = hydrate(doc);
+    const grid = doc ? await gridByCode(ctx, doc.code) : null;
+    if (doc && grid) {
+      const room = hydrate(doc, grid);
       room.removePlayer(playerId);
       const emptySince = room.humanCount === 0 ? Date.now() : undefined;
-      await ctx.db.patch(doc._id, { emptySince, ...patchFromRoom(room, doc.gridVersion) });
+      await persist(ctx, doc, grid, room, { emptySince });
     }
     await ctx.db.delete(link._id);
   },

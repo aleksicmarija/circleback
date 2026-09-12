@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { DEFAULT_ROOM_CODE, type Dir, type Snapshot } from "@game/core";
-import { byCode, createPublicArena, hydrate, toArrayBuffer } from "./rooms";
+import { byCode, createPublicArena, gridByCode, hydrate, toArrayBuffer } from "./rooms";
 
 /**
  * The subscription payload. Same shape as `@core`'s `Snapshot`, except every
@@ -28,7 +28,10 @@ export const snapshot = query({
   handler: async (ctx, { code }): Promise<WireSnapshot | null> => {
     const doc = await byCode(ctx, code.toUpperCase());
     if (!doc) return null;
-    const snap = hydrate(doc).snapshot(Date.now(), "patches");
+    // The grid row is only read when the snapshot will actually carry the
+    // layers (empty patch log); every other tick this query costs one row.
+    const grid = doc.gridLog.length === 0 ? await gridByCode(ctx, doc.code) : null;
+    const snap = hydrate(doc, grid).snapshot(Date.now(), "patches");
     return {
       ...snap,
       owner: snap.owner ? toArrayBuffer(snap.owner) : undefined,
@@ -42,9 +45,9 @@ export const snapshot = query({
 export const grid = query({
   args: { code: v.string() },
   handler: async (ctx, { code }) => {
-    const doc = await byCode(ctx, code.toUpperCase());
-    if (!doc) return null;
-    return { gridVersion: doc.gridVersion, owner: doc.owner, trail: doc.trail };
+    const grid = await gridByCode(ctx, code.toUpperCase());
+    if (!grid) return null;
+    return { gridVersion: grid.gridVersion, owner: grid.owner, trail: grid.trail };
   },
 });
 

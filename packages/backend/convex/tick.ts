@@ -2,7 +2,7 @@ import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS, type Dir } from "@game/core";
-import { byCode, hydrate, patchFromRoom } from "./rooms";
+import { byCode, gridByCode, hydrate, persist } from "./rooms";
 import type { MutationCtx } from "./_generated/server";
 
 /** Applies and clears every queued direction change for a room, oldest first. */
@@ -40,9 +40,14 @@ export const tick = internalMutation({
   handler: async (ctx, { code }) => {
     const doc = await byCode(ctx, code);
     if (!doc) return; // room deleted; loop ends here
+    const grid = await gridByCode(ctx, code);
+    if (!grid) {
+      await ctx.db.delete(doc._id); // half a room is no room; stop the loop
+      return;
+    }
 
     const now = Date.now();
-    const room = hydrate(doc);
+    const room = hydrate(doc, grid);
 
     // Bots play for humans in the room or for anyone watching it; otherwise pause.
     const watched = doc.lastWatchedAt !== undefined && now - doc.lastWatchedAt < WATCH_TTL_MS;
@@ -51,6 +56,7 @@ export const tick = internalMutation({
       if (now - emptySince > ROOM_IDLE_MS) {
         await drainInputs(ctx, code, () => {});
         await ctx.db.delete(doc._id);
+        await ctx.db.delete(grid._id);
         return;
       }
       if (doc.emptySince === undefined) await ctx.db.patch(doc._id, { emptySince });
@@ -62,7 +68,7 @@ export const tick = internalMutation({
     await drainInputs(ctx, code, (playerId, dir, at) => room.setDirection(playerId, dir, at));
     const { kicked } = room.step(now);
     await forgetPlayers(ctx, kicked);
-    await ctx.db.patch(doc._id, { emptySince: undefined, ...patchFromRoom(room, doc.gridVersion) });
+    await persist(ctx, doc, grid, room, { emptySince: undefined });
     await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
   },
 });

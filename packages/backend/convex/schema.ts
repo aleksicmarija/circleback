@@ -1,12 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-// One document per room holds the entire `RoomState` as flat top-level
-// fields, not nested inside one `state: {...}` object. `patch` replaces
-// whatever value a field is given wholesale rather than deep-merging, so
-// keeping `owner`/`trail` as siblings of `players`/`tick`/etc. lets a tick
-// that didn't change the grid omit those two (large) fields from its patch
-// entirely instead of being forced to re-supply them every time.
+// One document per room holds the room state as flat top-level fields. The
+// two grid layers live in `grids`, a separate document per room, so that the
+// snapshot query, which re-runs on every tick, never reads 8 KB of bytes it
+// does not return. The tick reads both and writes the grid only when it changed.
 export default defineSchema({
   rooms: defineTable({
     code: v.string(),
@@ -22,8 +20,6 @@ export default defineSchema({
     lastStepAt: v.union(v.number(), v.null()),
     nextId: v.number(),
     nextBotName: v.number(),
-    owner: v.bytes(), // Uint8Array, GRID_W * GRID_H
-    trail: v.bytes(), // same size
     // Recent grid changes (see core `GridPatch`). The snapshot query ships
     // these instead of the 8 KB layers; clients refetch the full grid only
     // when they fall behind the log.
@@ -60,6 +56,14 @@ export default defineSchema({
         ),
       }),
     ),
+  }).index("by_code", ["code"]),
+
+  // The grid layers, one document per room (see the note at the top).
+  grids: defineTable({
+    code: v.string(),
+    gridVersion: v.number(),
+    owner: v.bytes(), // Uint8Array, GRID_W * GRID_H
+    trail: v.bytes(), // same size
   }).index("by_code", ["code"]),
 
   // Mirrors GameServer's in-memory `owners: Map<PlayerId, Connection>`. The

@@ -39,14 +39,14 @@ export const MAX_NAME_LENGTH = 16;
 export const DEFAULT_ROOM_CODE = "MAIN";
 
 /** How many grid patches a room remembers; a client further behind than this refetches the full grid. */
-export const GRID_LOG_LENGTH = 20;
+export const GRID_LOG_LENGTH = 6;
 
 /**
  * Total budget for the patch log inside the room document. Ordinary ticks add
  * well under 100 bytes, so this only bites after a run of large captures, and
  * it stops the log from bloating the row that every tick rewrites.
  */
-export const GRID_LOG_MAX_BYTES = 16_384;
+export const GRID_LOG_MAX_BYTES = 4_096;
 
 /**
  * A change touching more cells than this is not worth sending as a patch: at

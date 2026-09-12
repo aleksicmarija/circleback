@@ -28,6 +28,8 @@ export type Player = {
   /** Cell indices of the current trail, oldest first. */
   trailCells: number[];
   kills: number;
+  /** Territory size. Refreshed whenever the grid changes and persisted, so a host can score without loading the grid. */
+  cells: number;
   respawnAt: number;
   killedBy: string | null;
   /** When this player last joined or steered; humans idle past IDLE_KICK_MS are removed. */
@@ -60,8 +62,14 @@ export type RoomState = {
   lastStepAt: number | null;
   nextId: number;
   nextBotName: number;
-  owner: Uint8Array;
-  trail: Uint8Array;
+  /**
+   * The grid layers. `serialize` always includes them. A host may omit both
+   * when hydrating a room it will only ask for a snapshot from: scores come
+   * from each player's persisted `cells`, and the layers are only needed in
+   * the snapshot itself while the patch log is empty (see `Snapshot`).
+   */
+  owner?: Uint8Array;
+  trail?: Uint8Array;
   /** Recent grid changes, oldest first; see `Snapshot.patches`. */
   gridLog: GridPatch[];
   players: PlayerState[];
@@ -133,10 +141,12 @@ export class Room {
     makeId?: (isBot: boolean) => string,
   ): Room {
     const room = new Room(state.code, random, makeId);
-    room.grid.owner.set(state.owner);
-    room.grid.trail.set(state.trail);
-    room.shadowOwner.set(state.owner);
-    room.shadowTrail.set(state.trail);
+    if (state.owner && state.trail) {
+      room.grid.owner.set(state.owner);
+      room.grid.trail.set(state.trail);
+      room.shadowOwner.set(state.owner);
+      room.shadowTrail.set(state.trail);
+    }
     room.gridLog = state.gridLog.map((p) => ({ ...p, cells: p.cells.slice() }));
     room.loggedVersion = state.gridVersion;
     room.tick = state.tick;
@@ -148,7 +158,10 @@ export class Room {
       const player: Player = { ...p, trailCells: [...p.trailCells] };
       room.players.set(player.id, player);
       room.bySlot[player.slot] = player;
+      room.counts[player.slot + 1] = player.cells;
     }
+    // Persisted scores are as fresh as the grid version they were saved with.
+    room.countedVersion = state.gridVersion;
     return room;
   }
 
@@ -186,6 +199,7 @@ export class Room {
       progress: 0,
       trailCells: [],
       kills: 0,
+      cells: 0,
       respawnAt: now,
       killedBy: null,
       lastInputAt: now,
@@ -379,6 +393,11 @@ export class Room {
       this.gridLog.length = 0;
     }
     this.loggedVersion = this.gridVersion;
+
+    // Scores travel with the players so hosts can serve them without the grid.
+    this.grid.count(this.counts);
+    this.countedVersion = this.gridVersion;
+    for (const p of this.players.values()) p.cells = this.counts[p.slot + 1];
   }
 
   /** True while no patch chains to the current version, so clients need the layers. */
