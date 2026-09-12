@@ -18,12 +18,13 @@
     "build": "npm run build -w apps/web",
     "build:smoke": "npm run build -w apps/smoke",
     "typecheck": "tsc -p apps/web --noEmit && tsc -p apps/smoke --noEmit && tsc -p packages/backend/convex --noEmit",
-    "deploy": "convex deploy --cmd 'npm run build -w apps/web'",
+    "deploy": "convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'",
     "codegen": "convex codegen"
   },
   "devDependencies": {
     "concurrently": "^10.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0"
   },
   "dependencies": {
     "convex": "^1.45.0"

@@ -3,11 +3,11 @@
 # deployment, then builds the client with VITE_CONVEX_URL pointing at it.
 services:
   - type: web
-    name: hackathon-game-web
+    name: circleback-web
     runtime: static
     # Manual deploys only: ship from the Render dashboard or a deploy hook.
     autoDeploy: false
-    buildCommand: npm ci && npx convex deploy --cmd 'npm run build -w apps/web'
+    buildCommand: npm ci && npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'
     staticPublishPath: apps/web/dist
 
     # Only relevant if autoDeploy is turned back on, or for PR previews.
@@ -37,13 +37,15 @@ services:
       - key: CONVEX_DEPLOY_KEY
         sync: false
 
-  # Pipeline smoke test (apps/smoke): same build shape, separate site, so the
-  # deploy path can be verified independently of the game. Delete when done.
+  # Pipeline smoke test (apps/smoke). Points at the DEV Convex deployment, which
+  # `npx convex dev` already pushed the functions to -- so this service needs no
+  # deploy key and does not run `convex deploy`. It only builds the bundle.
+  # Delete this service, apps/smoke/, smoke.ts and the smoke_pings table when done.
   - type: web
-    name: hackathon-game-smoke
+    name: circleback-smoke
     runtime: static
     autoDeploy: false
-    buildCommand: npm ci && npx convex deploy --cmd 'npm run build -w apps/smoke'
+    buildCommand: npm ci && npm run build -w apps/smoke
     staticPublishPath: apps/smoke/dist
     routes:
       - type: rewrite
@@ -52,5 +54,6 @@ services:
     envVars:
       - key: SKIP_INSTALL_DEPS
         value: "true"
-      - key: CONVEX_DEPLOY_KEY
-        sync: false
+      # Not a secret: this URL is baked into the public JS bundle either way.
+      - key: VITE_CONVEX_URL
+        value: https://kindhearted-chipmunk-159.eu-west-1.convex.cloud

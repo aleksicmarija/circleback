@@ -105,7 +105,7 @@ gameplay traffic goes browser ↔ Convex over a WebSocket.
 `render.yaml` sets the build command to:
 
 ```bash
-npm ci && npx convex deploy --cmd 'npm run build -w apps/web'
+npm ci && npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'
 ```
 
 `npx convex deploy` does three things, **in this order**:
@@ -117,6 +117,16 @@ npm ci && npx convex deploy --cmd 'npm run build -w apps/web'
 3. **Then** uploads `packages/backend/convex/` to the Convex production
    deployment and regenerates `_generated`.
 
+> **Why `--cmd-url-env-var-name` is there.**
+> Convex picks the env var name by looking for `vite` in the **root**
+> `package.json`. In a monorepo Vite lives in `apps/web`, so without help
+> Convex falls back to the generic `CONVEX_URL` — which Vite never exposes to
+> browser code, because only `VITE_`-prefixed variables reach the bundle. The
+> result is a build that succeeds and a page that dies on "VITE_CONVEX_URL is
+> not set". Two things prevent that: `vite` is declared in the root
+> `package.json` devDependencies so detection works, and the flag pins the name
+> so CI cannot guess differently.
+>
 > **Why `convex/_generated/` is committed to git.**
 > Step 2 runs *before* step 3. On a fresh CI checkout the client is built
 > before codegen has ever run, so if `_generated/` were gitignored the Render
