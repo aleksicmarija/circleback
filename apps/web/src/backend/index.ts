@@ -1,5 +1,6 @@
 import type { Backend } from "./types";
 import { createLocalBackend } from "./local";
+import { createConvexBackend } from "./convex";
 
 export type { Backend, JoinResult } from "./types";
 
@@ -10,10 +11,7 @@ export function createBackend(): Backend {
     case "local":
       return createLocalBackend();
     case "convex":
-      throw new Error(
-        "The Convex backend has not been ported to the territory game yet. " +
-          "Implement `Backend` in apps/web/src/backend/convex.ts and wire it here.",
-      );
+      return createConvexBackend();
     default:
       throw new Error(`Unknown VITE_BACKEND "${String(kind)}"`);
   }

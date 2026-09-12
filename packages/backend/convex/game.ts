@@ -1,70 +1,56 @@
 import { query, mutation } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
-import { INPUT_MIN_INTERVAL_MS, PLAYER_SPEED } from "./constants";
+import { v } from "convex/values";
+import type { Dir, Snapshot } from "@game/core";
+import { byCode, hydrate, patchFromRoom } from "./rooms";
+
+/** A `Snapshot` with the grid layers as `ArrayBuffer`s, Convex's wire type for bytes. */
+type WireSnapshot = Omit<Snapshot, "owner" | "trail"> & { owner?: ArrayBuffer; trail?: ArrayBuffer };
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
 
 /**
  * The single subscription the client lives on. Convex re-runs this and pushes
  * the result to every connected client whenever any row it read changes.
+ * The shape is `@core`'s `Snapshot`, unmodified except that the grid layers
+ * cross the wire as `ArrayBuffer` (Convex's bytes type) instead of
+ * `Uint8Array`; the client adapter converts them back.
  */
 export const snapshot = query({
   args: { code: v.string() },
-  handler: async (ctx, { code }) => {
-    const room = await ctx.db
-      .query("rooms")
-      .withIndex("by_code", (q) => q.eq("code", code.toUpperCase()))
-      .first();
-    if (!room) return null;
+  handler: async (ctx, { code }): Promise<WireSnapshot | null> => {
+    const doc = await byCode(ctx, code.toUpperCase());
+    if (!doc) return null;
 
-    const players = await ctx.db
-      .query("players")
-      .withIndex("by_room", (q) => q.eq("roomId", room._id))
-      .collect();
-
+    const snap = hydrate(doc).snapshot(Date.now(), true);
     return {
-      roomId: room._id,
-      code: room.code,
-      status: room.status,
-      players: players.map((p) => ({
-        id: p._id,
-        name: p.name,
-        colorIndex: p.colorIndex,
-        x: p.x,
-        z: p.z,
-        yaw: p.yaw,
-      })),
+      ...snap,
+      owner: snap.owner ? toArrayBuffer(snap.owner) : undefined,
+      trail: snap.trail ? toArrayBuffer(snap.trail) : undefined,
     };
   },
 });
 
 /**
- * Records a player's intent. The client sends a direction, never a position --
- * the tick owns position, so a modified client cannot teleport.
+ * Records a player's intent. Direction changes are edge-triggered -- one
+ * call per keypress, not per tick -- so hydrating/re-serializing the whole
+ * room here is bounded by input rate, not tick rate.
  */
-export const input = mutation({
-  args: {
-    playerId: v.id("players"),
-    moveX: v.number(),
-    moveZ: v.number(),
-    yaw: v.number(),
-  },
-  handler: async (ctx, { playerId, moveX, moveZ, yaw }) => {
-    const player = await ctx.db.get(playerId);
-    if (!player) throw new ConvexError("Player not found");
+export const setDirection = mutation({
+  args: { playerId: v.string(), dir: v.union(v.literal(0), v.literal(1), v.literal(2), v.literal(3)) },
+  handler: async (ctx, { playerId, dir }) => {
+    const link = await ctx.db
+      .query("playerRooms")
+      .withIndex("by_player", (q) => q.eq("playerId", playerId))
+      .first();
+    if (!link) return;
 
-    // Rate limit server-side; a client can always ignore its own throttle.
-    const now = Date.now();
-    if (now - player.lastInputAt < INPUT_MIN_INTERVAL_MS * 0.8) return;
+    const doc = await byCode(ctx, link.code);
+    if (!doc) return;
 
-    // Normalise so diagonal movement is not faster than straight movement.
-    const length = Math.hypot(moveX, moveZ);
-    const nx = length > 1 ? moveX / length : moveX;
-    const nz = length > 1 ? moveZ / length : moveZ;
-
-    await ctx.db.patch(playerId, {
-      vx: nx * PLAYER_SPEED,
-      vz: nz * PLAYER_SPEED,
-      yaw,
-      lastInputAt: now,
-    });
+    const room = hydrate(doc);
+    room.setDirection(playerId, dir as Dir);
+    await ctx.db.patch(doc._id, patchFromRoom(room, doc.gridVersion));
   },
 });

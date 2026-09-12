@@ -1,124 +1,169 @@
 import { mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
-import { MAX_PLAYERS, PLAYER_COLORS, ARENA_HALF, TICK_MS } from "./constants";
+import {
+  Room, RoomFullError, DEFAULT_ROOM_CODE, MAX_NAME_LENGTH, TICK_MS,
+  type PlayerState, type RoomState,
+} from "@game/core";
+import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 // Ambiguous characters (0/O, 1/I) left out so codes are easy to read aloud.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-function randomCode(): string {
-  let code = "";
-  for (let i = 0; i < 4; i++) {
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return code;
+// Player ids must be unique across every room in the deployment, not just
+// within one room: `playerRooms` is keyed by playerId alone. `Room`'s
+// built-in id generator only counts within a single instance, so every
+// place a Room is created or hydrated here supplies this instead.
+const makeId = (isBot: boolean): string => `${isBot ? "b" : "p"}_${crypto.randomUUID()}`;
+
+export function hydrate(doc: Doc<"rooms">): Room {
+  const state: RoomState = {
+    code: doc.code,
+    tick: doc.tick,
+    gridVersion: doc.gridVersion,
+    lastStepAt: doc.lastStepAt,
+    nextId: doc.nextId,
+    nextBotName: doc.nextBotName,
+    owner: new Uint8Array(doc.owner),
+    trail: new Uint8Array(doc.trail),
+    players: doc.players as PlayerState[],
+  };
+  return Room.hydrate(state, Math.random, makeId);
 }
 
-/** Spawns players evenly around a circle so nobody starts inside anyone else. */
-function spawnPoint(index: number): { x: number; z: number; yaw: number } {
-  const angle = (index / MAX_PLAYERS) * Math.PI * 2;
-  const radius = ARENA_HALF * 0.6;
+type RoomFields = {
+  tick: number;
+  gridVersion: number;
+  lastStepAt: number | null;
+  nextId: number;
+  nextBotName: number;
+  players: PlayerState[];
+  owner: ArrayBuffer;
+  trail: ArrayBuffer;
+};
+
+/** The full row, for the initial insert -- owner/trail are required here. */
+function fieldsForInsert(room: Room): RoomFields {
+  const state = room.serialize();
   return {
-    x: Math.cos(angle) * radius,
-    z: Math.sin(angle) * radius,
-    yaw: angle + Math.PI,
+    tick: state.tick,
+    gridVersion: state.gridVersion,
+    lastStepAt: state.lastStepAt,
+    nextId: state.nextId,
+    nextBotName: state.nextBotName,
+    players: state.players,
+    owner: toArrayBuffer(state.owner),
+    trail: toArrayBuffer(state.trail),
   };
+}
+
+/** Fields to patch after driving a Room. Omits owner/trail when the grid didn't change. */
+export function patchFromRoom(room: Room, writtenGridVersion: number): Partial<RoomFields> {
+  const state = room.serialize();
+  const patch: Partial<RoomFields> = {
+    tick: state.tick,
+    gridVersion: state.gridVersion,
+    lastStepAt: state.lastStepAt,
+    nextId: state.nextId,
+    nextBotName: state.nextBotName,
+    players: state.players,
+  };
+  if (state.gridVersion !== writtenGridVersion) {
+    patch.owner = toArrayBuffer(state.owner);
+    patch.trail = toArrayBuffer(state.trail);
+  }
+  return patch;
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+export async function byCode(ctx: QueryCtx, code: string): Promise<Doc<"rooms"> | null> {
+  return await ctx.db
+    .query("rooms")
+    .withIndex("by_code", (q) => q.eq("code", code))
+    .first();
+}
+
+async function uniqueCode(ctx: MutationCtx): Promise<string> {
+  for (;;) {
+    let code = "";
+    for (let i = 0; i < 4; i++) code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    if (!(await byCode(ctx, code))) return code;
+  }
+}
+
+function cleanName(name: string): string {
+  return name.trim().slice(0, MAX_NAME_LENGTH) || "player";
+}
+
+async function insertRoom(ctx: MutationCtx, code: string, room: Room): Promise<void> {
+  await ctx.db.insert("rooms", { code, ...fieldsForInsert(room) });
+  await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
+}
+
+async function createPublicArena(ctx: MutationCtx): Promise<Doc<"rooms">> {
+  const room = new Room(DEFAULT_ROOM_CODE, Math.random, makeId);
+  room.ensureBots(Date.now());
+  await insertRoom(ctx, DEFAULT_ROOM_CODE, room);
+  return (await byCode(ctx, DEFAULT_ROOM_CODE))!;
 }
 
 export const create = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
-    // Retry on the small chance of a code collision.
-    let code = randomCode();
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const clash = await ctx.db
-        .query("rooms")
-        .withIndex("by_code", (q) => q.eq("code", code))
-        .first();
-      if (!clash) break;
-      code = randomCode();
-    }
+    const code = await uniqueCode(ctx);
+    const room = new Room(code, Math.random, makeId);
+    room.ensureBots(Date.now());
+    const player = room.addPlayer(cleanName(name), false, Date.now());
 
-    const roomId = await ctx.db.insert("rooms", {
-      code,
-      status: "lobby",
-      tickToken: 0,
-    });
-
-    const spawn = spawnPoint(0);
-    const playerId = await ctx.db.insert("players", {
-      roomId,
-      name,
-      colorIndex: 0,
-      x: spawn.x,
-      z: spawn.z,
-      vx: 0,
-      vz: 0,
-      yaw: spawn.yaw,
-      lastInputAt: Date.now(),
-    });
-
-    return { code, roomId, playerId };
+    await insertRoom(ctx, code, room);
+    await ctx.db.insert("playerRooms", { playerId: player.id, code });
+    return { code, playerId: player.id };
   },
 });
 
 export const join = mutation({
-  args: { code: v.string(), name: v.string() },
+  args: { code: v.union(v.string(), v.null()), name: v.string() },
   handler: async (ctx, { code, name }) => {
-    const room = await ctx.db
-      .query("rooms")
-      .withIndex("by_code", (q) => q.eq("code", code.toUpperCase()))
-      .first();
-    if (!room) throw new ConvexError(`No room with code ${code}`);
+    const targetCode = code?.trim().toUpperCase() || DEFAULT_ROOM_CODE;
+    let doc = await byCode(ctx, targetCode);
+    if (!doc && targetCode === DEFAULT_ROOM_CODE) doc = await createPublicArena(ctx);
+    if (!doc) throw new ConvexError(`No room with code ${targetCode}`);
 
-    const players = await ctx.db
-      .query("players")
-      .withIndex("by_room", (q) => q.eq("roomId", room._id))
-      .collect();
-    if (players.length >= MAX_PLAYERS) throw new ConvexError("Room is full");
+    const room = hydrate(doc);
+    let player;
+    try {
+      player = room.addPlayer(cleanName(name), false, Date.now());
+    } catch (error) {
+      if (error instanceof RoomFullError) throw new ConvexError("That room is full.");
+      throw error;
+    }
 
-    const slot = players.length;
-    const spawn = spawnPoint(slot);
-    const playerId = await ctx.db.insert("players", {
-      roomId: room._id,
-      name,
-      colorIndex: slot % PLAYER_COLORS.length,
-      x: spawn.x,
-      z: spawn.z,
-      vx: 0,
-      vz: 0,
-      yaw: spawn.yaw,
-      lastInputAt: Date.now(),
-    });
-
-    return { code: room.code, roomId: room._id, playerId };
+    await ctx.db.patch(doc._id, { emptySince: undefined, ...patchFromRoom(room, doc.gridVersion) });
+    await ctx.db.insert("playerRooms", { playerId: player.id, code: doc.code });
+    return { code: doc.code, playerId: player.id };
   },
 });
 
 export const leave = mutation({
-  args: { playerId: v.id("players") },
+  args: { playerId: v.string() },
   handler: async (ctx, { playerId }) => {
-    const player = await ctx.db.get(playerId);
-    if (player) await ctx.db.delete(playerId);
-  },
-});
+    const link = await ctx.db
+      .query("playerRooms")
+      .withIndex("by_player", (q) => q.eq("playerId", playerId))
+      .first();
+    if (!link) return;
 
-/**
- * Flips the room to "playing" and starts the tick loop.
- * Bumping tickToken retires any loop still running from a previous start.
- */
-export const start = mutation({
-  args: { roomId: v.id("rooms") },
-  handler: async (ctx, { roomId }) => {
-    const room = await ctx.db.get(roomId);
-    if (!room) throw new ConvexError("Room not found");
-
-    const token = room.tickToken + 1;
-    await ctx.db.patch(roomId, { status: "playing", tickToken: token });
-    await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, {
-      roomId,
-      token,
-      prevAt: Date.now(),
-    });
+    const doc = await byCode(ctx, link.code);
+    if (doc) {
+      const room = hydrate(doc);
+      room.removePlayer(playerId);
+      const emptySince = room.humanCount === 0 ? Date.now() : undefined;
+      await ctx.db.patch(doc._id, { emptySince, ...patchFromRoom(room, doc.gridVersion) });
+    }
+    await ctx.db.delete(link._id);
   },
 });

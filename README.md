@@ -48,7 +48,7 @@ circleback/
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 -- that's it, no accounts, no cloud
+npm run dev:web      # http://localhost:5173 -- that's it, no accounts, no cloud
 ```
 
 Press **Play** to drop into the public arena. Open a second tab and press Play
@@ -57,13 +57,15 @@ again: both tabs share one SharedWorker, so you are playing against yourself.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Vite dev server (the whole game, backend included) |
+| `npm run dev:web` | Vite dev server only, running the whole game (backend included) in a Web Worker -- the zero-setup path, no Convex account needed |
+| `npm run dev` | Convex watcher plus Vite together, for full-stack work against the Convex backend |
 | `npm run build` | Production build into `apps/web/dist` |
 | `npm run typecheck` | Typechecks core, local server, client and the Convex functions |
-| `npm run dev:all` | Vite plus the Convex watcher, for when the Convex backend is ported |
 
 Optional `.env.local` settings (see `.env.example`):
 
+- `VITE_BACKEND=convex` switches the client from the in-browser simulation to
+  the Convex backend (default is `local`). Used together with `npm run dev`.
 - `VITE_FAKE_LATENCY_MS=120` adds simulated round-trip latency to the local
   backend. Use it to check that interpolation and input feel hold up.
 
@@ -92,28 +94,32 @@ Optional `.env.local` settings (see `.env.example`):
 - **Ownership is enforced server-side.** A connection can only steer or
   remove players it created.
 
-## Moving to a real server
+## The Convex backend
+
+`packages/backend/convex/` is a second, production `Backend` implementation
+that behaves identically to the local one. Since a Convex mutation is a fresh
+invocation every time (nothing survives between calls except the database),
+its `tick.ts` reloads the room's persisted state, drives a real `Room`
+instance from `@game/core` exactly like `GameServer` does, and persists what
+changed -- see `Room.serialize()` / `Room.hydrate()` in `game-core/src/room.ts`.
+
+- **Schema** (`schema.ts`): one `rooms` row holds the entire room state as
+  flat top-level fields (not nested), so a tick that didn't touch the grid
+  can omit the `owner`/`trail` bytes from its patch. `playerRooms` mirrors
+  `GameServer`'s in-memory `playerId -> connection` map, since `leaveRoom`/
+  `setDirection` only take a player id.
+- **`rooms.ts`** has `create` / `join` / `leave`, mirroring `GameServer`'s
+  methods of the same shape.
+- **`tick.ts`** is the scheduled loop: it reschedules itself every `TICK_MS`
+  and stops for good once a room's document is deleted (idle rooms are
+  deleted after `ROOM_IDLE_MS`).
+- **`game.ts`** has the `snapshot` query the client subscribes to (Convex's
+  bytes type is `ArrayBuffer`; the client adapter converts it back to the
+  `Uint8Array` the rest of `apps/web` expects) and `setDirection`.
 
 Nothing in `packages/game-core` or `packages/local-server/src/server.ts`
-knows it is in a browser. To host it for real:
-
-1. **Node + WebSockets (smallest change).** Write a ~30-line host that does
-   what `worker.ts` does with sockets instead of ports: on connection call
-   `server.connect(send)`, on message call `server.handle(connection, msg)`,
-   on close call `server.disconnect(connection)`. Serialise with JSON, or
-   MessagePack so the `Uint8Array` grid layers stay compact. Then add
-   `apps/web/src/backend/ws.ts` implementing `Backend` over a WebSocket (it
-   is `local.ts` with `port` swapped for a socket) and select it in
-   `backend/index.ts`.
-2. **Convex.** Port `Room` into a scheduled mutation the way the original
-   scaffold's `tick.ts` did, storing the two grid layers as bytes on the room
-   row, and implement `Backend` over `ConvexClient`. Convex functions can
-   import `game-core` by relative path. Mind the cost: 20Hz is 72,000
-   function calls per room-hour, so you would likely drop the tick rate and
-   raise `INTERP_DELAY_MS`.
-
-Either way the client stays as it is, because it only ever imports
-`./backend`.
+knows which backend is driving it, and the client stays as it is either way,
+because it only ever imports `./backend`.
 
 ---
 

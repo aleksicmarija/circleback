@@ -36,6 +36,21 @@ export class RoomFullError extends Error {
   }
 }
 
+export type PlayerState = Player; // already a plain data object, no methods
+
+/** Everything needed to reconstruct a `Room` byte-for-byte across a load/save boundary. */
+export type RoomState = {
+  code: string;
+  tick: number;
+  gridVersion: number;
+  lastStepAt: number | null;
+  nextId: number;
+  nextBotName: number;
+  owner: Uint8Array;
+  trail: Uint8Array;
+  players: PlayerState[];
+};
+
 /**
  * One arena. Pure simulation: no timers, no I/O. The host calls `step(now)`
  * on a schedule and `snapshot(now)` to read the result.
@@ -67,6 +82,47 @@ export class Room {
     /** Hosts running several rooms must supply ids that are unique across all of them. */
     private readonly makeId: (isBot: boolean) => string = (isBot) => `${isBot ? "b" : "p"}${this.nextId++}`,
   ) {}
+
+  /**
+   * A snapshot of every field needed to reconstruct this room elsewhere
+   * (e.g. across a database load in a stateless host). `bySlot` and
+   * `counts` are pure derived data and are rebuilt by `hydrate`/`snapshot`.
+   */
+  serialize(): RoomState {
+    return {
+      code: this.code,
+      tick: this.tick,
+      gridVersion: this.gridVersion,
+      lastStepAt: this.lastStepAt,
+      nextId: this.nextId,
+      nextBotName: this.nextBotName,
+      owner: this.grid.owner.slice(),
+      trail: this.grid.trail.slice(),
+      players: [...this.players.values()].map((p) => ({ ...p, trailCells: [...p.trailCells] })),
+    };
+  }
+
+  /** The inverse of `serialize`: rebuilds a live `Room` from persisted state. */
+  static hydrate(
+    state: RoomState,
+    random: () => number = Math.random,
+    makeId?: (isBot: boolean) => string,
+  ): Room {
+    const room = new Room(state.code, random, makeId);
+    room.grid.owner.set(state.owner);
+    room.grid.trail.set(state.trail);
+    room.tick = state.tick;
+    room.gridVersion = state.gridVersion;
+    room.lastStepAt = state.lastStepAt;
+    room.nextId = state.nextId;
+    room.nextBotName = state.nextBotName;
+    for (const p of state.players) {
+      const player: Player = { ...p, trailCells: [...p.trailCells] };
+      room.players.set(player.id, player);
+      room.bySlot[player.slot] = player;
+    }
+    return room;
+  }
 
   get humanCount(): number {
     let n = 0;
