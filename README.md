@@ -1,19 +1,17 @@
 # Circleback · Pets vs Bots
 
-**A real-time multiplayer turf war you can join from your phone in five seconds.
+**A real-time multiplayer turf war you can join from any device in five seconds.
 Cute pets claim territory. Robots are AI agents trying to take it back.**
 
 Built in one day at the [Grok Bot Serbia Hackathon](https://hackathon.cursorserbia.com/),
 Belgrade, 12 September 2026.
 
-<!-- TODO: replace the two placeholder URLs below with the live Render URLs before submitting -->
-
-- 🎮 **Play:** https://circleback-web.onrender.com/ <sub>(placeholder)</sub>
-- 📺 **Watch the live match:** https://circleback-web.onrender.com/spectate <sub>(placeholder)</sub>
-- 🎥 **Demo video:** link coming with the submission
+- 🎮 **Play:** https://circleback-web-yui1.onrender.com/
+- 📺 **Spectator view:** https://circleback-web-yui1.onrender.com/spectate/
+- 🎥 **Demo video:** https://youtu.be/6QVqxYMYg-8
 - 💻 **Source:** https://github.com/aleksicmarija/circleback
 
-Put the **Watch** page on a big screen. It shows the whole arena, the live
+Put the **spectator view** on a big screen. It shows the whole arena, the live
 leaderboard, and a QR code. Anyone who scans it lands in the same match.
 
 ---
@@ -189,9 +187,12 @@ its `tick.ts` reloads the room's persisted state, drives a real `Room`
 instance from `@game/core` exactly like `GameServer` does, and persists what
 changed -- see `Room.serialize()` / `Room.hydrate()` in `game-core/src/room.ts`.
 
-- **Schema** (`schema.ts`): one `rooms` row holds the entire room state as
-  flat top-level fields (not nested), so a tick that didn't touch the grid
-  can omit the `owner`/`trail` bytes from its patch. `playerRooms` mirrors
+- **Schema** (`schema.ts`): a `rooms` row holds the room state as flat
+  top-level fields; the two 4 KB grid layers live in a separate `grids` row.
+  The snapshot query re-runs on every tick and never returns the layers, so
+  keeping them apart means it reads about 1 KB instead of 9, and the tick
+  writes the grid row only when the grid changed. Each player's territory
+  count is persisted too, so scoring needs no grid. `playerRooms` mirrors
   `GameServer`'s in-memory `playerId -> connection` map, since `leaveRoom`/
   `setDirection` only take a player id.
 - **`rooms.ts`** has `create` / `join` / `leave`, mirroring `GameServer`'s
