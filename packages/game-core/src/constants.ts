@@ -33,13 +33,25 @@ export const DEFAULT_ROOM_CODE = "MAIN";
 /** A room with no humans in it is deleted after this long. */
 export const ROOM_IDLE_MS = 30_000;
 
-/** Per-player colours, indexed by slot. */
+/** Per-player colours, indexed by slot. Saturated so paint reads on a dark floor. */
 export const PLAYER_COLORS = [
-  0x4cc9f0, 0xf72585, 0x4ade80, 0xfbbf24,
-  0xa78bfa, 0xfb7185, 0x22d3ee, 0xf97316,
+  0x38bdf8, 0xf472b6, 0x4ade80, 0xfacc15,
+  0xa78bfa, 0xf87171, 0xe2e8f0, 0xfb923c,
 ] as const;
 
+/**
+ * Cosmetic skins. Humans pick a pet; bots are always robots. The client loads
+ * `/models/<skin>.glb`, so these ids double as file names.
+ */
+export const PET_SKINS = [
+  "pet-elephant", "pet-pig", "pet-caterpillar", "pet-bee",
+  "pet-koala", "pet-crab", "pet-panda", "pet-tiger",
+] as const;
+export const BOT_SKINS = ["robot-a", "robot-b"] as const;
+
+export type Skin = (typeof PET_SKINS)[number] | (typeof BOT_SKINS)[number];
+
 export const BOT_NAMES = [
-  "Nova", "Pixel", "Zed", "Mango", "Comet", "Blip",
+  "Nova", "Pixel", "Zed", "Byte", "Comet", "Blip",
   "Rook", "Tango", "Juno", "Vex", "Kilo", "Echo",
 ] as const;

@@ -1,10 +1,10 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES,
+  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
-  DIR_DX, DIR_DZ, opposite,
+  DIR_DX, DIR_DZ, opposite, turnLeft, turnRight,
   type Dir, type PlayerId, type PlayerSnapshot, type Snapshot,
 } from "./types";
 import { createBotState, decideBot, pickTargetTrail, type BotState } from "./bots";
@@ -14,6 +14,9 @@ export type Player = {
   name: string;
   slot: number;
   isBot: boolean;
+  skin: string;
+  /** Free-text line shown above the player; an AI agent can set it via setStatus. */
+  status: string | null;
   alive: boolean;
   /** Cell the player is leaving; `progress` is how far along to the next one (0..1). */
   cx: number;
@@ -29,6 +32,15 @@ export type Player = {
   killedBy: string | null;
   bot: BotState | null;
 };
+
+/** What a heuristic bot is up to, for the label above its head. */
+function botStatus(p: Player): string {
+  if (!p.alive) return "rebooting";
+  if (!p.bot) return "";
+  if (p.trailCells.length >= p.bot.targetTrail) return "heading home";
+  if (p.trailCells.length > 0) return "raiding";
+  return "patrolling";
+}
 
 export class RoomFullError extends Error {
   constructor() {
@@ -60,7 +72,8 @@ export type RoomState = {
  * - Outside your territory you leave a trail. Re-entering your territory
  *   captures everything the loop enclosed.
  * - Anyone who drives over a trail kills its owner. That includes your own.
- * - Leaving the arena kills you. Dying wipes your territory.
+ * - The arena edge bounces you 90 degrees to a random side.
+ * - Dying wipes your territory.
  */
 export class Room {
   readonly grid = new Grid(GRID_W, GRID_H);
@@ -75,6 +88,7 @@ export class Room {
   private lastStepAt: number | null = null;
   private nextId = 1;
   private nextBotName = 0;
+  private nextBotSkin = 0;
 
   constructor(
     readonly code: string,
@@ -131,7 +145,7 @@ export class Room {
   }
 
   /** Adds a player and spawns them. A human joining a full room evicts a bot. */
-  addPlayer(name: string, isBot: boolean, now: number): Player {
+  addPlayer(name: string, isBot: boolean, now: number, skin?: string): Player {
     let slot = this.freeSlot();
     if (slot < 0 && !isBot) {
       const bot = [...this.players.values()].find((p) => p.isBot);
@@ -147,6 +161,8 @@ export class Room {
       name,
       slot,
       isBot,
+      skin: this.pickSkin(isBot, slot, skin),
+      status: null,
       alive: false,
       cx: 0,
       cz: 0,
@@ -181,6 +197,12 @@ export class Room {
     }
   }
 
+  /** Lets an external brain (an LLM agent, for instance) narrate what a player is doing. */
+  setStatus(id: PlayerId, status: string | null): void {
+    const player = this.players.get(id);
+    if (player) player.status = status;
+  }
+
   /** The only input a player has. Reversing into your own trail is refused. */
   setDirection(id: PlayerId, dir: Dir): void {
     const player = this.players.get(id);
@@ -203,22 +225,13 @@ export class Room {
 
       player.progress += PLAYER_SPEED * dt;
 
-      // Heading off the arena: die at the wall rather than half a cell past it.
-      if (
-        player.progress >= 0.5 &&
-        !this.grid.inBounds(player.cx + DIR_DX[player.dir], player.cz + DIR_DZ[player.dir])
-      ) {
-        player.progress = 0.5;
-        this.kill(player, null, now);
-        continue;
-      }
-
       while (player.alive && player.progress >= 1) {
         player.progress -= 1;
         this.enterCell(player, player.cx + DIR_DX[player.dir], player.cz + DIR_DZ[player.dir], now);
         if (!player.alive) break;
         if (player.bot) decideBot(this, player, player.bot, this.random);
         player.dir = player.nextDir;
+        this.steerOffWalls(player);
       }
     }
 
@@ -238,6 +251,8 @@ export class Room {
         name: p.name,
         slot: p.slot,
         isBot: p.isBot,
+        skin: p.skin,
+        status: p.status ?? (p.bot ? botStatus(p) : undefined),
         alive: p.alive,
         x: p.cx + 0.5 + DIR_DX[p.dir] * p.progress,
         z: p.cz + 0.5 + DIR_DZ[p.dir] * p.progress,
@@ -268,10 +283,28 @@ export class Room {
     return this.bySlot.indexOf(null);
   }
 
+  private pickSkin(isBot: boolean, slot: number, requested?: string): string {
+    if (isBot) return BOT_SKINS[this.nextBotSkin++ % BOT_SKINS.length];
+    if (requested && (PET_SKINS as readonly string[]).includes(requested)) return requested;
+    return PET_SKINS[slot % PET_SKINS.length];
+  }
+
+  /** About to drive off the edge: turn 90 degrees to a random side that stays inside. */
+  private steerOffWalls(p: Player): void {
+    const { grid } = this;
+    if (grid.inBounds(p.cx + DIR_DX[p.dir], p.cz + DIR_DZ[p.dir])) return;
+    const options = [turnLeft(p.dir), turnRight(p.dir)].filter((d) =>
+      grid.inBounds(p.cx + DIR_DX[d], p.cz + DIR_DZ[d]),
+    );
+    p.dir = options.length > 0 ? options[Math.floor(this.random() * options.length)] : opposite(p.dir);
+    p.nextDir = p.dir;
+  }
+
   private enterCell(p: Player, x: number, z: number, now: number): void {
     const { grid } = this;
     if (!grid.inBounds(x, z)) {
-      this.kill(p, null, now);
+      // steerOffWalls should make this unreachable; bounce rather than crash if it is not.
+      this.steerOffWalls(p);
       return;
     }
 
@@ -347,6 +380,7 @@ export class Room {
     p.cz = z;
     p.dir = Math.floor(this.random() * 4) as Dir;
     p.nextDir = p.dir;
+    this.steerOffWalls(p);
     p.progress = 0;
     p.trailCells.length = 0;
     p.killedBy = null;

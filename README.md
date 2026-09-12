@@ -41,7 +41,8 @@ circleback/
 - Leaving your territory draws a trail. Getting back home captures everything
   the loop enclosed, including other people's land.
 - Driving over any trail kills its owner. Your own trail included.
-- Hitting the wall kills you. Dying wipes your territory; you respawn in 2.5s.
+- The arena edge bounces you 90 degrees to a random side. Dying wipes your
+  territory; you respawn in 2.5s.
 - Bots top every room up to `MIN_PLAYERS`. A human joining a full room evicts a bot.
 
 ## Running it
@@ -51,7 +52,9 @@ npm install
 npm run dev:web      # http://localhost:5173 -- that's it, no accounts, no cloud
 ```
 
-Press **Play** to drop into the public arena. Open a second tab and press Play
+Press **Play** to drop into the public arena. Open `/watch.html` on a big
+screen for the spectator view: whole arena, leaderboard, and a QR code that
+sends phones to the same room (`/watch.html?room=ABCD` for private rooms). Open a second tab and press Play
 again: both tabs share one SharedWorker, so you are playing against yourself.
 "Host new room" / "Join room" give you private 4-letter rooms.
 

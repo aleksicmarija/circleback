@@ -9,10 +9,10 @@ export type JoinResult = { code: string; playerId: PlayerId };
  * implementation in this folder and selecting it in `index.ts`.
  */
 export interface Backend {
-  /** Creates a private room and joins it. */
-  createRoom(name: string): Promise<JoinResult>;
+  /** Creates a private room and joins it. `skin` is a PET_SKINS id. */
+  createRoom(name: string, skin: string): Promise<JoinResult>;
   /** Joins a room by code, or the public arena when `code` is null. */
-  joinRoom(code: string | null, name: string): Promise<JoinResult>;
+  joinRoom(code: string | null, name: string, skin: string): Promise<JoinResult>;
   leaveRoom(playerId: PlayerId): Promise<void>;
   /** Fire-and-forget; sent on every keypress. */
   setDirection(playerId: PlayerId, dir: Dir): void;

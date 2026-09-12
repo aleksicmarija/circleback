@@ -11,8 +11,8 @@ export type JoinResult = { code: string; playerId: PlayerId };
 
 /** Requests get a numbered reply. */
 export type Request =
-  | { type: "create"; name: string }
-  | { type: "join"; code: string | null; name: string }
+  | { type: "create"; name: string; skin?: string }
+  | { type: "join"; code: string | null; name: string; skin?: string }
   | { type: "leave"; playerId: PlayerId }
   | { type: "subscribe"; code: string }
   | { type: "unsubscribe"; code: string };

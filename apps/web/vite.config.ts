@@ -16,5 +16,15 @@ export default defineConfig({
     },
   },
   server: { port: 5173 },
-  build: { outDir: "dist", sourcemap: true },
+  build: {
+    outDir: "dist",
+    sourcemap: true,
+    // Two pages: the game and the spectator screen.
+    rolldownOptions: {
+      input: {
+        main: resolve(here, "index.html"),
+        watch: resolve(here, "watch.html"),
+      },
+    },
+  },
 });
