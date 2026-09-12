@@ -8,12 +8,10 @@ Belgrade, 12 September 2026.
 
 <!-- TODO: replace the two placeholder URLs below with the live Render URLs before submitting -->
 
-| | |
-| --- | --- |
-| 🎮 **Play** | **https://circleback-web.onrender.com/** <sub>(placeholder)</sub> |
-| 📺 **Watch the live match** | **https://circleback-web.onrender.com/watch.html** <sub>(placeholder)</sub> |
-| 🎥 Demo video | *link coming with the submission* |
-| 💻 Source | https://github.com/aleksicmarija/circleback |
+- 🎮 **Play:** https://circleback-web.onrender.com/ <sub>(placeholder)</sub>
+- 📺 **Watch the live match:** https://circleback-web.onrender.com/watch.html <sub>(placeholder)</sub>
+- 🎥 **Demo video:** link coming with the submission
+- 💻 **Source:** https://github.com/aleksicmarija/circleback
 
 Put the **Watch** page on a big screen. It shows the whole arena, the live
 leaderboard, and a QR code. Anyone who scans it lands in the same match.
@@ -22,8 +20,7 @@ leaderboard, and a QR code. Anyone who scans it lands in the same match.
 
 ## The game in 30 seconds
 
-Circleback is a [Color Galaxy](https://en.wikipedia.org/wiki/Paper.io) style
-territory game, rebuilt from scratch in Three.js.
+Circleback is a territory game built from scratch in Three.js.
 
 - Pick a pet, press **Play**. You are dropped into the public arena with a
   small blob of turf. You never stop moving; WASD, arrows, or a swipe pick a
@@ -42,7 +39,7 @@ territory game, rebuilt from scratch in Three.js.
 Works on desktop and phones. Private rooms with 4-letter codes exist for
 playing with friends.
 
-## Why this is interesting
+## How it is built
 
 **One game core, two servers.** The entire rule set (movement, trails,
 flood-fill capture, kills, respawns, bot steering) lives in one pure
