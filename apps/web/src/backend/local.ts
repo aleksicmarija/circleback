@@ -56,12 +56,12 @@ export function createLocalBackend(): Backend {
   setInterval(() => post({ type: "ping" }), PING_INTERVAL_MS);
 
   return {
-    createRoom(name) {
-      return request<JoinResult>({ type: "create", name });
+    createRoom(name, skin) {
+      return request<JoinResult>({ type: "create", name, skin });
     },
 
-    joinRoom(code, name) {
-      return request<JoinResult>({ type: "join", code, name });
+    joinRoom(code, name, skin) {
+      return request<JoinResult>({ type: "join", code, name, skin });
     },
 
     async leaveRoom(playerId: PlayerId) {

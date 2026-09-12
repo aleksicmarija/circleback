@@ -23,7 +23,7 @@ type RoomEntry = {
   subscribers: Set<Connection>;
   /** gridVersion at the last broadcast, so unchanged grids are not resent. */
   sentGridVersion: number;
-  /** When the last human left; the room is deleted after ROOM_IDLE_MS. */
+  /** Since when nobody (player or spectator) has been in the room; deleted after ROOM_IDLE_MS. */
   emptySince: number | null;
 };
 
@@ -99,12 +99,12 @@ export class GameServer {
   private request(connection: Connection, message: Request): unknown {
     switch (message.type) {
       case "create":
-        return this.join(connection, this.createRoom().room.code, message.name);
+        return this.join(connection, this.createRoom().room.code, message.name, message.skin);
 
       case "join": {
         const code = message.code ? message.code.trim().toUpperCase() : DEFAULT_ROOM_CODE;
         if (code === DEFAULT_ROOM_CODE && !this.rooms.has(code)) this.createRoom(code);
-        return this.join(connection, code, message.name);
+        return this.join(connection, code, message.name, message.skin);
       }
 
       case "leave": {
@@ -115,6 +115,8 @@ export class GameServer {
 
       case "subscribe": {
         const code = message.code.toUpperCase();
+        // Spectators may open the public arena before anyone has joined it.
+        if (code === DEFAULT_ROOM_CODE && !this.rooms.has(code)) this.createRoom(code);
         const entry = this.rooms.get(code);
         if (!entry) throw new Error(`No room with code ${code}`);
         entry.subscribers.add(connection);
@@ -133,17 +135,16 @@ export class GameServer {
     }
   }
 
-  private join(connection: Connection, code: string, rawName: string): JoinResult {
+  private join(connection: Connection, code: string, rawName: string, skin?: string): JoinResult {
     const entry = this.rooms.get(code);
     if (!entry) throw new Error(`No room with code ${code}`);
 
     const name = rawName.trim().slice(0, MAX_NAME_LENGTH) || "player";
     const now = this.clock();
     try {
-      const player = entry.room.addPlayer(name, false, now);
+      const player = entry.room.addPlayer(name, false, now, skin);
       connection.players.set(player.id, code);
       this.owners.set(player.id, connection);
-      entry.emptySince = null;
       return { code, playerId: player.id };
     } catch (error) {
       if (error instanceof RoomFullError) throw new Error("That room is full.");
@@ -169,7 +170,6 @@ export class GameServer {
     entry.room.removePlayer(playerId);
     this.owners.get(playerId)?.players.delete(playerId);
     this.owners.delete(playerId);
-    if (entry.room.humanCount === 0) entry.emptySince = this.clock();
   }
 
   private uniqueCode(): string {
@@ -189,17 +189,15 @@ export class GameServer {
     this.dropSilentConnections(now);
 
     for (const [code, entry] of this.rooms) {
-      if (entry.emptySince !== null && now - entry.emptySince > ROOM_IDLE_MS) {
-        for (const connection of entry.subscribers) {
-          connection.subscriptions.delete(code);
-          connection.send({ type: "snapshot", code, snapshot: null });
-        }
-        this.rooms.delete(code);
+      // A room with neither players nor spectators pauses, then goes away.
+      const audience = entry.room.humanCount > 0 || entry.subscribers.size > 0;
+      if (audience) {
+        entry.emptySince = null;
+      } else {
+        entry.emptySince ??= now;
+        if (now - entry.emptySince > ROOM_IDLE_MS) this.rooms.delete(code);
         continue;
       }
-
-      // Rooms with no humans in them do not simulate; bots only play for an audience.
-      if (entry.room.humanCount === 0) continue;
 
       entry.room.ensureBots(now);
       entry.room.step(now);

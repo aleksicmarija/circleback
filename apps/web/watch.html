@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Circleback · Spectate</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="spectate">
+    <canvas id="stage"></canvas>
+
+    <div id="watch-hud">
+      <aside id="join-card">
+        <h1>Circleback</h1>
+        <p class="tagline">Pets vs Bots · scan to join</p>
+        <canvas id="qr" width="220" height="220"></canvas>
+        <div id="join-url"></div>
+        <div id="room-code"></div>
+        <div id="room-stats"></div>
+      </aside>
+      <ol id="watch-board"></ol>
+      <div id="watch-status" hidden></div>
+    </div>
+
+    <script type="module" src="/src/watch.ts"></script>
+  </body>
+</html>

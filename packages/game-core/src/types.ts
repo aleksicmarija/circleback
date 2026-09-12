@@ -17,6 +17,10 @@ export type PlayerSnapshot = {
   /** Colour index, stable for the player's lifetime in the room. */
   slot: number;
   isBot: boolean;
+  /** Cosmetic model id (see PET_SKINS / BOT_SKINS). Optional so older backends still work. */
+  skin?: string;
+  /** Short line shown above bots: what the agent is currently doing or saying. */
+  status?: string;
   alive: boolean;
   /** Continuous position in cell units; cell (cx, cz) has its centre at (cx + 0.5, cz + 0.5). */
   x: number;

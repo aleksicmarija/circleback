@@ -1,7 +1,8 @@
-import type { Snapshot } from "@core";
+import { BOT_SKINS, PET_SKINS, type PlayerSnapshot, type Snapshot } from "@core";
 import { createBackend } from "./backend";
 import * as ui from "./ui";
 import * as scene from "./scene";
+import * as audio from "./audio";
 import * as interpolate from "./interpolate";
 import { onDirection } from "./input";
 
@@ -18,6 +19,32 @@ const HUD_INTERVAL_MS = 200;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+/**
+ * Compares consecutive snapshots to fire sounds and particle bursts. The
+ * server does not send events; everything is derived from state changes.
+ */
+function react(previous: Snapshot | null, next: Snapshot, localPlayerId: string): void {
+  if (!previous) return;
+  const before = new Map<string, PlayerSnapshot>(previous.players.map((p) => [p.id, p]));
+
+  for (const p of next.players) {
+    const b = before.get(p.id);
+    if (!b) continue;
+    const isMe = p.id === localPlayerId;
+
+    if (p.cells > b.cells + 1 && p.alive) {
+      scene.burst(p.x, p.z, p.slot, true);
+      if (isMe) audio.play("capture");
+    }
+    if (b.alive && !p.alive) {
+      scene.burst(b.x, b.z, p.slot, false);
+      if (isMe) audio.play("death");
+    }
+    if (!b.alive && p.alive && isMe) audio.play("spawn");
+    if (p.kills > b.kills && isMe) audio.play("kill");
+  }
 }
 
 function connect(next: Session): void {
@@ -37,6 +64,7 @@ function connect(next: Session): void {
       return;
     }
 
+    react(latest, incoming, next.playerId);
     latest = incoming;
     if (incoming.owner && incoming.trail) scene.updateBoard(incoming.owner, incoming.trail);
     interpolate.record(incoming.players);
@@ -59,6 +87,7 @@ function disconnect(): void {
 }
 
 onDirection((dir) => {
+  ui.hideTouchHint();
   if (session) backend.setDirection(session.playerId, dir);
 });
 
@@ -71,17 +100,17 @@ function frame(): void {
 }
 
 ui.mount({
-  async onPlay(name, code) {
+  async onPlay(name, code, skin) {
     try {
-      connect(await backend.joinRoom(code, name));
+      connect(await backend.joinRoom(code, name, skin));
     } catch (error) {
       ui.showMenu(errorMessage(error));
     }
   },
 
-  async onHost(name) {
+  async onHost(name, skin) {
     try {
-      connect(await backend.createRoom(name));
+      connect(await backend.createRoom(name, skin));
     } catch (error) {
       ui.showMenu(errorMessage(error));
     }
@@ -101,5 +130,6 @@ window.addEventListener("pagehide", () => {
   if (session) void backend.leaveRoom(session.playerId);
 });
 
+scene.preload([...PET_SKINS, ...BOT_SKINS]);
 ui.showMenu();
 requestAnimationFrame(frame);
