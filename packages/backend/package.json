@@ -1,0 +1,9 @@
+{
+  "name": "@game/backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "convex": "^1.45.0"
+  }
+}

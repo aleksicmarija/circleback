@@ -1,0 +1,38 @@
+# Render Blueprint. One static site; Convex hosts the backend itself.
+# The build command does BOTH halves: pushes convex/ to the Convex prod
+# deployment, then builds the client with VITE_CONVEX_URL pointing at it.
+services:
+  - type: web
+    name: hackathon-game-web
+    runtime: static
+    # Manual deploys only: ship from the Render dashboard or a deploy hook.
+    autoDeploy: false
+    buildCommand: npm ci && npx convex deploy --cmd 'npm run build -w apps/web'
+    staticPublishPath: apps/web/dist
+
+    # Only relevant if autoDeploy is turned back on, or for PR previews.
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/backend/**
+        - package.json
+        - package-lock.json
+        - render.yaml
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+    envVars:
+      # We run `npm ci` ourselves so the workspace install is deterministic.
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      # Convex production deploy key. Render prompts for this; never commit it.
+      - key: CONVEX_DEPLOY_KEY
+        sync: false

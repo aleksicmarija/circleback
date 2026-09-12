@@ -1,0 +1,29 @@
+{
+  "name": "hackathon-game",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n convex,web -c cyan,magenta \"npm:dev:convex\" \"npm:dev:web\"",
+    "dev:convex": "convex dev",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "typecheck": "tsc -p apps/web --noEmit && tsc -p packages/backend/convex --noEmit",
+    "deploy": "convex deploy --cmd 'npm run build -w apps/web'",
+    "codegen": "convex codegen"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "convex": "^1.45.0"
+  }
+}

@@ -1,0 +1,33 @@
+:root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #0b0f14; color: #e6edf3; overflow: hidden; }
+#stage { display: block; width: 100vw; height: 100vh; }
+
+#hud {
+  position: fixed; inset: 0; pointer-events: none;
+  padding: 16px; display: flex; flex-direction: column; gap: 12px;
+}
+#hud .panel {
+  pointer-events: auto; align-self: flex-start;
+  background: rgba(13, 19, 27, 0.88); border: 1px solid #26303c;
+  border-radius: 10px; padding: 16px; min-width: 260px; max-width: 90vw;
+}
+#hud h1 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0.02em; }
+#hud label { display: block; font-size: 12px; color: #8b98a5; margin: 10px 0 4px; }
+#hud input {
+  width: 100%; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid #26303c; background: #0b0f14; color: inherit; font: inherit;
+}
+#hud button {
+  margin-top: 12px; margin-right: 8px; padding: 8px 14px; border-radius: 6px;
+  border: 1px solid #2f6feb; background: #2f6feb; color: white;
+  font: inherit; cursor: pointer;
+}
+#hud button.secondary { background: transparent; border-color: #26303c; color: #e6edf3; }
+#hud button:disabled { opacity: 0.5; cursor: default; }
+#hud .code { font-size: 28px; letter-spacing: 0.18em; font-weight: 600; }
+#hud .players { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+#hud .players li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+#hud .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#hud .hint { font-size: 12px; color: #8b98a5; margin-top: 10px; }
+#hud .error { color: #ff7b72; font-size: 12px; margin-top: 10px; }
