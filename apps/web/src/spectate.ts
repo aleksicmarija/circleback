@@ -4,7 +4,7 @@
  * Served at /spectate, or /spectate?room=ABCD for a private room.
  */
 import QRCode from "qrcode";
-import { DEFAULT_ROOM_CODE, PLAYER_COLORS, BOT_SKINS, PET_SKINS, type Snapshot } from "@core";
+import { DEFAULT_ROOM_CODE, colorForSlot, BOT_SKINS, PET_SKINS, type Snapshot } from "@core";
 import { createBackend } from "./backend";
 import * as scene from "./scene";
 import * as interpolate from "./interpolate";
@@ -42,7 +42,7 @@ void QRCode.toCanvas(qr, joinUrl.toString(), {
 });
 
 function hex(slot: number): string {
-  return `#${PLAYER_COLORS[slot % PLAYER_COLORS.length].toString(16).padStart(6, "0")}`;
+  return `#${colorForSlot(slot).toString(16).padStart(6, "0")}`;
 }
 
 function escapeHtml(text: string): string {

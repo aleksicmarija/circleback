@@ -1,4 +1,4 @@
-import { PLAYER_COLORS, MAX_NAME_LENGTH, PET_SKINS, IDLE_KICK_MS, IDLE_WARN_MS, type Snapshot } from "@core";
+import { colorForSlot, MAX_NAME_LENGTH, PET_SKINS, IDLE_KICK_MS, IDLE_WARN_MS, type Snapshot } from "@core";
 import * as audio from "./audio";
 
 export type UiHandlers = {
@@ -62,7 +62,7 @@ function renderMute(): void {
 }
 
 function hex(slot: number): string {
-  return `#${PLAYER_COLORS[slot % PLAYER_COLORS.length].toString(16).padStart(6, "0")}`;
+  return `#${colorForSlot(slot).toString(16).padStart(6, "0")}`;
 }
 
 function escapeHtml(text: string): string {

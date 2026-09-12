@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { GRID_W, GRID_H, PLAYER_COLORS, DIR_DX, DIR_DZ, type PlayerSnapshot } from "@core";
+import { GRID_W, GRID_H, colorForSlot, DIR_DX, DIR_DZ, type PlayerSnapshot } from "@core";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 
@@ -32,11 +32,30 @@ const clock = new THREE.Clock();
 // southward (down the screen), which is why rows are flipped when writing.
 
 const EMPTY_RGB = [27, 25, 19] as const;
-const TERRITORY_RGB = PLAYER_COLORS.map(hexToRgb);
 // A trail is drawn as a 2x2 checker of the player's colour and a dimmed
 // version of it, so it reads as a dotted line next to solid territory of the
 // same colour. Brightness alone was not enough for light colours.
-const TRAIL_DIM_RGB = TERRITORY_RGB.map((c) => c.map((v, k) => Math.round(v * 0.35 + EMPTY_RGB[k] * 0.65)));
+const territoryRgb = new Map<number, number[]>();
+const trailDimRgb = new Map<number, number[]>();
+
+/** Grid cell value (slot + 1) -> territory colour, cached per slot. */
+function territoryFor(value: number): number[] {
+  let rgb = territoryRgb.get(value);
+  if (!rgb) {
+    rgb = hexToRgb(colorForSlot(value - 1));
+    territoryRgb.set(value, rgb);
+  }
+  return rgb;
+}
+
+function trailDimFor(value: number): number[] {
+  let rgb = trailDimRgb.get(value);
+  if (!rgb) {
+    rgb = territoryFor(value).map((v, k) => Math.round(v * 0.35 + EMPTY_RGB[k] * 0.65));
+    trailDimRgb.set(value, rgb);
+  }
+  return rgb;
+}
 
 /** Texels per cell edge; the checker needs more than one. */
 const SUB = 2;
@@ -99,14 +118,14 @@ export function updateBoard(owner: Uint8Array, trail: Uint8Array): void {
       const o = owner[i];
       const tx = x * SUB;
       if (t) {
-        const bright = TERRITORY_RGB[(t - 1) % TERRITORY_RGB.length];
-        const dim = TRAIL_DIM_RGB[(t - 1) % TRAIL_DIM_RGB.length];
+        const bright = territoryFor(t);
+        const dim = trailDimFor(t);
         putTexel(tx, ty, bright);
         putTexel(tx + 1, ty, dim);
         putTexel(tx, ty + 1, dim);
         putTexel(tx + 1, ty + 1, bright);
       } else {
-        const rgb = o ? TERRITORY_RGB[(o - 1) % TERRITORY_RGB.length] : EMPTY_RGB;
+        const rgb = o ? territoryFor(o) : EMPTY_RGB;
         putTexel(tx, ty, rgb);
         putTexel(tx + 1, ty, rgb);
         putTexel(tx, ty + 1, rgb);
@@ -210,7 +229,7 @@ function paintLabel(canvas: HTMLCanvasElement, name: string, status: string | un
 }
 
 function createAvatar(view: PlayerSnapshot, isLocal: boolean): Avatar {
-  const color = PLAYER_COLORS[view.slot % PLAYER_COLORS.length];
+  const color = colorForSlot(view.slot);
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
 
@@ -300,7 +319,7 @@ export function syncPlayers(views: PlayerSnapshot[], localPlayerId: string | nul
       avatar.labelText = labelText;
       const material = avatar.label.material as THREE.SpriteMaterial;
       const texture = material.map as THREE.CanvasTexture;
-      paintLabel(texture.image as HTMLCanvasElement, view.name, view.status, PLAYER_COLORS[view.slot % PLAYER_COLORS.length]);
+      paintLabel(texture.image as HTMLCanvasElement, view.name, view.status, colorForSlot(view.slot));
       texture.needsUpdate = true;
     }
 
@@ -375,7 +394,7 @@ export function burst(x: number, z: number, slot: number, big: boolean): void {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
-    color: PLAYER_COLORS[slot % PLAYER_COLORS.length],
+    color: colorForSlot(slot),
     size: big ? 0.45 : 0.3,
     transparent: true,
     depthWrite: false,

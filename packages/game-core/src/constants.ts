@@ -19,8 +19,11 @@ export const RESPAWN_MS = 2500;
 /** Radius of the starting blob of territory. */
 export const SPAWN_RADIUS = 2;
 
-/** Hard cap on pieces per room: one colour per slot. Humans are otherwise unlimited. */
-export const MAX_PLAYERS = 16;
+/**
+ * Hard cap on pieces per room. Not a design limit: the grid stores each
+ * cell's owner as one byte (0 = nobody, slot + 1), which leaves 254 slots.
+ */
+export const MAX_PLAYERS = 254;
 
 /**
  * The board never has fewer pieces than this. Bots make up the difference:
@@ -64,10 +67,11 @@ export const IDLE_WARN_MS = 15_000;
 export const ROOM_IDLE_MS = 30_000;
 
 /**
- * Per-player colours, indexed by slot: MAX_PLAYERS distinct entries, saturated
- * so paint reads on a dark floor, and no white, which is reserved for the
- * local player's rim and would hide a trail against territory. The first
- * eight are the most distinct hues; the second eight are lighter cousins.
+ * Hand-picked colours for the first slots: saturated so paint reads on a
+ * dark floor, and no white, which is reserved for the local player's rim and
+ * would hide a trail against territory. The first eight are the most distinct
+ * hues; the second eight are lighter cousins. Slots beyond the list get a
+ * generated colour from `colorForSlot`.
  */
 export const PLAYER_COLORS = [
   0xf87171, 0xfb923c, 0xfacc15, 0x2dd4bf,
@@ -75,6 +79,23 @@ export const PLAYER_COLORS = [
   0xa3e635, 0x22d3ee, 0xe879f9, 0xfdba74,
   0x86efac, 0xc4b5fd, 0xfda4af, 0xfde68a,
 ] as const;
+
+/** Colour for any slot: the palette while it lasts, then evenly spread hues at varying lightness. */
+export function colorForSlot(slot: number): number {
+  if (slot < PLAYER_COLORS.length) return PLAYER_COLORS[slot];
+  const n = slot - PLAYER_COLORS.length;
+  const hue = (n * 137.508) % 360; // golden angle: consecutive slots land far apart
+  const light = 0.55 + 0.15 * ((n % 3) - 1); // 0.40, 0.55, 0.70
+  return hslToHex(hue, 0.85, light);
+}
+
+function hslToHex(h: number, s: number, l: number): number {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  const c = (v: number) => Math.round(v * 255);
+  return (c(f(0)) << 16) | (c(f(8)) << 8) | c(f(4));
+}
 
 /**
  * Cosmetic skins. Humans pick a pet; bots are always robots. The client loads

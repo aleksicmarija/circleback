@@ -33,8 +33,10 @@ Circleback is a territory game built from scratch in Three.js.
   turf; you respawn somewhere fresh 2.5 seconds later.
 - Stop steering for 45 seconds and you are removed from the arena; the game
   warns you 15 seconds before.
-- The **robots are AI agents**. Every room is topped up with them so it never
-  feels empty, and a human joining a full room evicts one. The line under a
+- The **robots are AI agents**. The board never has fewer than seven pieces:
+  you join alongside six bots, the next six humans each take a bot's seat,
+  anyone after that simply joins, and a bot returns whenever the count
+  drops below seven. The line under a
   robot's name tells you what it is doing right now.
 - Scores are territory percentage. There is no end; the leaderboard is the game.
 
