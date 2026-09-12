@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import type { Dir, Snapshot } from "@game/core";
-import { byCode, hydrate, toArrayBuffer } from "./rooms";
+import { DEFAULT_ROOM_CODE, type Dir, type Snapshot } from "@game/core";
+import { byCode, createPublicArena, hydrate, toArrayBuffer } from "./rooms";
 
 /**
  * The subscription payload. Same shape as `@core`'s `Snapshot`, except every
@@ -45,6 +45,21 @@ export const grid = query({
     const doc = await byCode(ctx, code.toUpperCase());
     if (!doc) return null;
     return { gridVersion: doc.gridVersion, owner: doc.owner, trail: doc.trail };
+  },
+});
+
+/**
+ * A spectator's heartbeat. Marks the room as watched so the tick keeps the
+ * bots playing for an audience, and brings the public arena into existence
+ * if a screen is opened before anyone has joined.
+ */
+export const watch = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const upper = code.toUpperCase();
+    let doc = await byCode(ctx, upper);
+    if (!doc && upper === DEFAULT_ROOM_CODE) doc = await createPublicArena(ctx);
+    if (doc) await ctx.db.patch(doc._id, { lastWatchedAt: Date.now(), emptySince: undefined });
   },
 });
 

@@ -115,7 +115,7 @@ async function insertRoom(ctx: MutationCtx, code: string, room: Room): Promise<v
   await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });
 }
 
-async function createPublicArena(ctx: MutationCtx): Promise<Doc<"rooms">> {
+export async function createPublicArena(ctx: MutationCtx): Promise<Doc<"rooms">> {
   const room = new Room(DEFAULT_ROOM_CODE, Math.random, makeId);
   room.ensureBots(Date.now());
   await insertRoom(ctx, DEFAULT_ROOM_CODE, room);

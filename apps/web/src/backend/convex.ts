@@ -1,6 +1,6 @@
 import { ConvexClient } from "convex/browser";
 import { api } from "@backend/_generated/api";
-import type { Dir, PlayerId, Snapshot } from "@core";
+import { WATCH_HEARTBEAT_MS, type Dir, type PlayerId, type Snapshot } from "@core";
 import type { Backend } from "./types";
 
 /** Convex's wire type for every byte array is ArrayBuffer; `@core` wants Uint8Array. */
@@ -39,8 +39,18 @@ export function createConvexBackend(): Backend {
       await convex.mutation(api.rooms.leave, { playerId });
     },
     setDirection: (playerId: PlayerId, dir: Dir) => void convex.mutation(api.game.setDirection, { playerId, dir }),
-    watchRoom: (code, onSnapshot) =>
-      convex.onUpdate(api.game.snapshot, { code }, (snap) => onSnapshot(toSnapshot(snap))),
+    watchRoom: (code, onSnapshot) => {
+      // Convex queries cannot tell the server someone is watching, so say so
+      // explicitly; the tick keeps bots playing for a room with a heartbeat.
+      const beat = () => void convex.mutation(api.game.watch, { code }).catch(() => {});
+      beat();
+      const timer = setInterval(beat, WATCH_HEARTBEAT_MS);
+      const stop = convex.onUpdate(api.game.snapshot, { code }, (snap) => onSnapshot(toSnapshot(snap)));
+      return () => {
+        clearInterval(timer);
+        stop();
+      };
+    },
     fetchGrid: async (code) => {
       const grid = await convex.query(api.game.grid, { code });
       if (!grid) return null;

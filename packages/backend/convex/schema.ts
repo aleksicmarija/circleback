@@ -10,8 +10,12 @@ import { v } from "convex/values";
 export default defineSchema({
   rooms: defineTable({
     code: v.string(),
-    // Set when humanCount hits 0; the room is deleted after ROOM_IDLE_MS.
+    // Set when the room lost its audience (no humans, nobody watching); the
+    // room is deleted after ROOM_IDLE_MS.
     emptySince: v.optional(v.number()),
+    // Last spectator heartbeat (see game.watch). Bots keep playing for a
+    // watched room even when no human is in it.
+    lastWatchedAt: v.optional(v.number()),
 
     tick: v.number(),
     gridVersion: v.number(),

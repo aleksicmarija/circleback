@@ -63,6 +63,14 @@ export const IDLE_KICK_MS = 45_000;
 /** The client starts warning this long before the kick. */
 export const IDLE_WARN_MS = 15_000;
 
+/**
+ * Spectators keep a room alive without playing in it. A spectator page sends
+ * a heartbeat every WATCH_HEARTBEAT_MS; a room counts as watched for
+ * WATCH_TTL_MS after the last one.
+ */
+export const WATCH_HEARTBEAT_MS = 10_000;
+export const WATCH_TTL_MS = 30_000;
+
 /** A room with no humans in it is deleted after this long. */
 export const ROOM_IDLE_MS = 30_000;
 

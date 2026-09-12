@@ -1,7 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { ROOM_IDLE_MS, TICK_MS, type Dir } from "@game/core";
+import { ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS, type Dir } from "@game/core";
 import { byCode, hydrate, patchFromRoom } from "./rooms";
 import type { MutationCtx } from "./_generated/server";
 
@@ -44,7 +44,9 @@ export const tick = internalMutation({
     const now = Date.now();
     const room = hydrate(doc);
 
-    if (room.humanCount === 0) {
+    // Bots play for humans in the room or for anyone watching it; otherwise pause.
+    const watched = doc.lastWatchedAt !== undefined && now - doc.lastWatchedAt < WATCH_TTL_MS;
+    if (room.humanCount === 0 && !watched) {
       const emptySince = doc.emptySince ?? now;
       if (now - emptySince > ROOM_IDLE_MS) {
         await drainInputs(ctx, code, () => {});
