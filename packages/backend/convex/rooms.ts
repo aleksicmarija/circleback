@@ -112,12 +112,12 @@ async function createPublicArena(ctx: MutationCtx): Promise<Doc<"rooms">> {
 }
 
 export const create = mutation({
-  args: { name: v.string() },
-  handler: async (ctx, { name }) => {
+  args: { name: v.string(), skin: v.optional(v.string()) },
+  handler: async (ctx, { name, skin }) => {
     const code = await uniqueCode(ctx);
     const room = new Room(code, Math.random, makeId);
     room.ensureBots(Date.now());
-    const player = room.addPlayer(cleanName(name), false, Date.now());
+    const player = room.addPlayer(cleanName(name), false, Date.now(), skin);
 
     await insertRoom(ctx, code, room);
     await ctx.db.insert("playerRooms", { playerId: player.id, code });
@@ -126,8 +126,8 @@ export const create = mutation({
 });
 
 export const join = mutation({
-  args: { code: v.union(v.string(), v.null()), name: v.string() },
-  handler: async (ctx, { code, name }) => {
+  args: { code: v.union(v.string(), v.null()), name: v.string(), skin: v.optional(v.string()) },
+  handler: async (ctx, { code, name, skin }) => {
     const targetCode = code?.trim().toUpperCase() || DEFAULT_ROOM_CODE;
     let doc = await byCode(ctx, targetCode);
     if (!doc && targetCode === DEFAULT_ROOM_CODE) doc = await createPublicArena(ctx);
@@ -136,7 +136,7 @@ export const join = mutation({
     const room = hydrate(doc);
     let player;
     try {
-      player = room.addPlayer(cleanName(name), false, Date.now());
+      player = room.addPlayer(cleanName(name), false, Date.now(), skin);
     } catch (error) {
       if (error instanceof RoomFullError) throw new ConvexError("That room is full.");
       throw error;

@@ -15,7 +15,7 @@ const board = document.getElementById("watch-board") as HTMLOListElement;
 const status = document.getElementById("watch-status") as HTMLDivElement;
 const roomCode = document.getElementById("room-code") as HTMLDivElement;
 const roomStats = document.getElementById("room-stats") as HTMLDivElement;
-const joinUrlEl = document.getElementById("join-url") as HTMLDivElement;
+const joinUrlEl = document.getElementById("join-url") as HTMLAnchorElement;
 const qr = document.getElementById("qr") as HTMLCanvasElement;
 
 const SKIN_EMOJI: Record<string, string> = {
@@ -32,6 +32,7 @@ const joinUrl = new URL("/", location.origin);
 if (code !== DEFAULT_ROOM_CODE) joinUrl.searchParams.set("room", code);
 
 roomCode.textContent = code;
+joinUrlEl.href = joinUrl.toString();
 joinUrlEl.textContent = joinUrl.host + joinUrl.pathname + joinUrl.search;
 void QRCode.toCanvas(qr, joinUrl.toString(), {
   width: 220,

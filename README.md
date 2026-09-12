@@ -1,49 +1,128 @@
-# Circleback
+# Circleback · Pets vs Bots
 
-A multiplayer territory game in the spirit of Color Galaxy / paper.io. Vanilla
-Three.js client. The backend is a pure TypeScript simulation that today runs
-**inside the browser** in a Web Worker, and is designed to move to a real
-server without touching game logic or the client.
+**A real-time multiplayer turf war you can join from your phone in five seconds.
+Cute pets claim territory. Robots are AI agents trying to take it back.**
+
+Built in one day at the [Grok Bot Serbia Hackathon](https://hackathon.cursorserbia.com/),
+Belgrade, 12 September 2026.
+
+<!-- TODO: replace the two placeholder URLs below with the live Render URLs before submitting -->
+
+| | |
+| --- | --- |
+| 🎮 **Play** | **https://circleback-web.onrender.com/** <sub>(placeholder)</sub> |
+| 📺 **Watch the live match** | **https://circleback-web.onrender.com/watch.html** <sub>(placeholder)</sub> |
+| 🎥 Demo video | *link coming with the submission* |
+| 💻 Source | https://github.com/aleksicmarija/circleback |
+
+Put the **Watch** page on a big screen. It shows the whole arena, the live
+leaderboard, and a QR code. Anyone who scans it lands in the same match.
+
+---
+
+## The game in 30 seconds
+
+Circleback is a [Color Galaxy](https://en.wikipedia.org/wiki/Paper.io) style
+territory game, rebuilt from scratch in Three.js.
+
+- Pick a pet, press **Play**. You are dropped into the public arena with a
+  small blob of turf. You never stop moving; WASD, arrows, or a swipe pick a
+  direction.
+- Leave your turf and you draw a trail. Get back home and everything your loop
+  enclosed becomes yours, including other players' land.
+- Anyone who drives over a trail kills its owner. That includes your own
+  trail, so don't cross yourself.
+- The arena edge bounces you 90 degrees to a random side. Death wipes your
+  turf; you respawn somewhere fresh 2.5 seconds later.
+- The **robots are AI agents**. Every room is topped up with them so it never
+  feels empty, and a human joining a full room evicts one. The line under a
+  robot's name tells you what it is doing right now.
+- Scores are territory percentage. There is no end; the leaderboard is the game.
+
+Works on desktop and phones. Private rooms with 4-letter codes exist for
+playing with friends.
+
+## Why this is interesting
+
+**One game core, two servers.** The entire rule set (movement, trails,
+flood-fill capture, kills, respawns, bot steering) lives in one pure
+TypeScript package with no DOM, no rendering, and no network code. Two
+different hosts drive that same code unchanged:
+
+- an **in-browser server** running in a SharedWorker, which is how we
+  prototyped all day with zero infrastructure (two tabs in one browser play
+  against each other), and
+- the **Convex backend**, where a scheduled mutation ticks every room 20 times
+  a second, persisting the room state between invocations.
+
+The client does not know or care which one it is talking to. It only speaks
+to a five-method `Backend` interface, and swapping hosts is an environment
+variable.
+
+**The bots are designed to be replaced by real agents.** They already expose
+a `status` line the client renders above their heads, and the core has a
+`setStatus` hook so an external brain can narrate what a bot is doing. The
+message protocol between client and server is transport-agnostic, so any
+agent that can open a WebSocket could join a match as a player. That is the
+direction we want to take this (see the roadmap below).
+
+## How we used the partner stack
+
+| Partner | What it does for Circleback |
+| --- | --- |
+| **Grok Bot / Cursor** | The whole codebase was written in the host editor with agents during the hackathon. The commit history is the audit trail. |
+| **Convex** | Production backend. Rooms are Convex documents, a self-rescheduling internal mutation is the authoritative 20 Hz game loop, and one live query per room streams snapshots to every client over Convex's WebSocket. No sockets, no Postgres, no server process of our own. |
+| **Render** | Hosts the static Three.js client from a Blueprint (`render.yaml`). The build command deploys the Convex functions and bakes the production Convex URL into the bundle in one step. |
+| **Kenney (CC0)** | 3D pets and robots, sounds, music, and the display font. Not a hackathon partner, but worth crediting: every asset is handmade by [Kenney](https://kenney.nl) and released as public domain. **No art in this project was AI-generated.** |
+
+## Roadmap
+
+Things we designed for but did not finish in the day, roughly in the order
+we'd tackle them.
+
+**Agents**
+- [ ] Grok-driven bots via the **xAI API**: the LLM picks a strategy every few
+  seconds (raid, defend, hunt the leader) and the heuristic executes it cell
+  by cell. Trash talk goes into the existing `status` line.
+- [ ] "Describe your bot": a player types a personality in plain language and
+  Grok compiles it into a strategy config.
+- [ ] Bring-your-own-agent: publish the wire protocol so external agents can
+  join a match over a WebSocket and compete against humans and each other.
+- [ ] Run agent brains as **Mozaik** participants on its event bus, so agents
+  react to each other instead of polling.
+- [ ] Run untrusted player-written agents in **Daytona** sandboxes.
+
+**Game**
+- [ ] Kill feed and "you were cut off by" attribution in the spectator view.
+- [ ] Power-ups: speed boost, shield, trail eraser.
+- [ ] Round timer with a winner screen, for demo-friendly matches.
+- [ ] Persistent leaderboard across matches (one Convex table).
+- [ ] On-screen D-pad as an alternative to swipes on phones.
+
+**Presentation**
+- [ ] Generate a unique pet skin per player with **Fal.ai** from a prompt.
+- [ ] Rebuild the menu and HUD in **Wonder** so design edits ship as code.
+- [ ] Pretty `/watch` route on Render (today the page lives at `/watch.html`).
+
+---
+
+# For developers
+
+Repository layout:
 
 ```
 circleback/
-├── packages/game-core/src/      <- THE GAME. Pure TS: no DOM, no Three, no transport.
-│   ├── constants.ts             tuning shared by simulation and renderer
-│   ├── types.ts                 Dir, PlayerSnapshot, Snapshot (the client-facing contract)
-│   ├── grid.ts                  territory + trail layers, flood-fill capture
-│   ├── room.ts                  one arena: movement, trails, kills, respawns
-│   └── bots.ts                  bot steering
-│
-├── packages/local-server/src/   <- THE "SERVER". Also transport-agnostic.
-│   ├── protocol.ts              client <-> server messages (the wire format)
-│   ├── server.ts                GameServer: rooms, connections, tick loop, heartbeat
-│   └── worker.ts                ~20 lines: SharedWorker/Worker entry that feeds ports into GameServer
-│
-├── apps/web/src/                <- FRONTEND. Three.js, Vite, TypeScript.
-│   ├── backend/types.ts         `Backend` interface — the ONLY thing the client depends on
-│   ├── backend/local.ts         `Backend` over the worker (postMessage)
-│   ├── backend/index.ts         picks the implementation from VITE_BACKEND
-│   ├── main.ts                  entry point, session, render loop
-│   ├── scene.ts                 Three.js: board texture, avatars, camera
-│   ├── input.ts                 keys/swipes -> direction
-│   ├── interpolate.ts           smooths the 20Hz tick to 60fps
-│   └── ui.ts                    menu, leaderboard, death overlay
-│
-├── packages/backend/convex/     Convex backend from the first scaffold. Not used by the
-│                                client right now; see "Moving to a real server".
-└── render.yaml                  Render Blueprint (static site)
+├── packages/game-core/      THE GAME. Pure TypeScript rules: grid, trails, capture,
+│                            kills, respawns, bot steering. No DOM, no Three, no network.
+├── packages/local-server/   In-browser server: GameServer (rooms, connections, 20Hz
+│                            loop, heartbeat) plus a 20-line SharedWorker entry.
+├── packages/backend/convex/ Production server: Convex functions that hydrate a Room
+│                            from a document, tick it, and stream snapshots.
+├── apps/web/                Three.js client. Talks only to the `Backend` interface in
+│                            src/backend/, with local and Convex implementations.
+│   └── watch.html           Spectator page: whole arena, leaderboard, QR code.
+└── render.yaml              Render Blueprint for the static site.
 ```
-
-## The rules
-
-- Everyone moves constantly. WASD / arrows (or a swipe) pick a direction; you
-  cannot reverse.
-- Leaving your territory draws a trail. Getting back home captures everything
-  the loop enclosed, including other people's land.
-- Driving over any trail kills its owner. Your own trail included.
-- The arena edge bounces you 90 degrees to a random side. Dying wipes your
-  territory; you respawn in 2.5s.
-- Bots top every room up to `MIN_PLAYERS`. A human joining a full room evicts a bot.
 
 ## Running it
 
@@ -124,98 +203,8 @@ Nothing in `packages/game-core` or `packages/local-server/src/server.ts`
 knows which backend is driving it, and the client stays as it is either way,
 because it only ever imports `./backend`.
 
----
+## Deploying
 
-# How deployment works
-
-Two clouds, and **Convex is not deployed to Render**.
-
-```
-                    ┌──────────────────────────────┐
-   git push         │  Render (static site + CDN)  │
-   + Manual Deploy  │  serves apps/web/dist        │
-        │           └──────────────┬───────────────┘
-        │                          │ 1. browser loads HTML/JS
-        v                          v
-  ┌───────────┐              ┌──────────┐
-  │  GitHub   │              │ browser  │
-  └───────────┘              └────┬─────┘
-                                  │ 2. WebSocket, straight to Convex
-                                  v
-                    ┌──────────────────────────────┐
-                    │  Convex Cloud                │
-                    │  database + functions +      │
-                    │  the realtime sync engine    │
-                    └──────────────────────────────┘
-```
-
-Render serves the bundle once and is then out of the data path entirely. All
-gameplay traffic goes browser ↔ Convex over a WebSocket.
-
-## The one command that deploys both halves
-
-`render.yaml` sets the build command to:
-
-```bash
-npm ci && npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'
-```
-
-`npx convex deploy` does three things, **in this order**:
-
-1. Reads `CONVEX_DEPLOY_KEY` from the environment and resolves the production
-   deployment's URL.
-2. Runs the `--cmd` with `VITE_CONVEX_URL` injected, so Vite bakes the
-   production URL into the bundle.
-3. **Then** uploads `packages/backend/convex/` to the Convex production
-   deployment and regenerates `_generated`.
-
-> **Why `--cmd-url-env-var-name` is there.**
-> Convex picks the env var name by looking for `vite` in the **root**
-> `package.json`. In a monorepo Vite lives in `apps/web`, so without help
-> Convex falls back to the generic `CONVEX_URL` — which Vite never exposes to
-> browser code, because only `VITE_`-prefixed variables reach the bundle. The
-> result is a build that succeeds and a page that dies on "VITE_CONVEX_URL is
-> not set". Two things prevent that: `vite` is declared in the root
-> `package.json` devDependencies so detection works, and the flag pins the name
-> so CI cannot guess differently.
->
-> **Why `convex/_generated/` is committed to git.**
-> Step 2 runs *before* step 3. On a fresh CI checkout the client is built
-> before codegen has ever run, so if `_generated/` were gitignored the Render
-> build would fail on a missing `@backend/_generated/api` import.
-> **Whenever you add, rename, or delete a Convex function, commit the changed
-> `_generated/` files along with it.**
-
-## One-time Render setup
-
-1. In the Render dashboard: **New → Blueprint**, and pick `aleksicmarija/circleback`.
-   Render reads `render.yaml` and creates the static site with the right build
-   command, publish path, and SPA rewrite.
-2. It will prompt for **`CONVEX_DEPLOY_KEY`** (declared `sync: false`, so it is
-   never stored in git). Get the value from the
-   [Convex dashboard](https://dashboard.convex.dev) → your project →
-   **Production** deployment → *Settings → General → Generate Production Deploy
-   Key*, with the `deployment:deploy` permission enabled.
-3. Click deploy.
-
-## Shipping a change
-
-`autoDeploy: false` in `render.yaml`, so pushing to `main` does **not** deploy.
-Nothing reaches players until someone chooses to ship:
-
-**Render dashboard → the service → Manual Deploy → Deploy latest commit.**
-
-That protects a live demo from a bad last-minute push. To switch to
-deploy-on-push later, set `autoDeploy: true` in `render.yaml`.
-
-## Environments
-
-| | Backend | Frontend | Data |
-| --- | --- | --- | --- |
-| Local | your own Convex dev deployment | `localhost:5173` | yours alone |
-| Production | the Convex prod deployment | the Render site | shared, real |
-
-`npx convex dev` and `npx convex deploy` target different deployments, so local
-work can never touch production data.
-
----
+Render serves the static client; Convex hosts the backend itself. The build
+command does both halves in one step. Setup, deploy keys, and the shipping
+checklist live in [docs/DEPLOYING.md](docs/DEPLOYING.md).

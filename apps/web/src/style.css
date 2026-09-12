@@ -126,7 +126,12 @@ button.icon {
 #join-card h1 { margin: 0; font: 26px var(--display); letter-spacing: 0.04em; color: var(--accent); }
 #join-card .tagline { margin: 4px 0 12px; font-size: 13px; color: var(--muted); }
 #join-card #qr { width: 220px; height: 220px; border-radius: 10px; display: block; margin: 0 auto; }
-#join-url { margin-top: 10px; font: 13px var(--font-mono, ui-monospace, monospace); color: var(--text); word-break: break-all; }
+#join-url {
+  display: block; margin-top: 10px; pointer-events: auto;
+  font: 13px var(--font-mono, ui-monospace, monospace); color: var(--accent); word-break: break-all;
+  text-decoration: none;
+}
+#join-url:hover { text-decoration: underline; }
 #room-code { margin-top: 10px; font: 34px var(--display); letter-spacing: 0.22em; color: var(--text); }
 #room-stats { font-size: 13px; color: var(--muted); }
 

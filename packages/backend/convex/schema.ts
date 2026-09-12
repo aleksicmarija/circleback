@@ -26,6 +26,8 @@ export default defineSchema({
         name: v.string(),
         slot: v.number(),
         isBot: v.boolean(),
+        skin: v.string(),
+        status: v.union(v.string(), v.null()),
         alive: v.boolean(),
         cx: v.number(),
         cz: v.number(),

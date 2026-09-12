@@ -28,8 +28,8 @@ export function createConvexBackend(): Backend {
   const convex = new ConvexClient(url);
 
   return {
-    createRoom: (name) => convex.mutation(api.rooms.create, { name }),
-    joinRoom: (code, name) => convex.mutation(api.rooms.join, { code, name }),
+    createRoom: (name, skin) => convex.mutation(api.rooms.create, { name, skin }),
+    joinRoom: (code, name, skin) => convex.mutation(api.rooms.join, { code, name, skin }),
     leaveRoom: async (playerId) => {
       await convex.mutation(api.rooms.leave, { playerId });
     },
