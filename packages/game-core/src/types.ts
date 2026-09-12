@@ -37,8 +37,33 @@ export type PlayerSnapshot = {
   idleMs: number;
 };
 
-/** Cells that changed between two grid versions, as flat triples: index, owner, trail. */
-export type GridPatch = { from: number; version: number; cells: number[] };
+/** Bytes per changed cell in a patch: index (uint16 little-endian), owner, trail. */
+export const PATCH_STRIDE = 4;
+
+/**
+ * Cells that changed between two grid versions, packed PATCH_STRIDE bytes
+ * each. Bytes rather than a number array because the same change costs a few
+ * times less on the wire and sidesteps Convex's limit on array length, which
+ * together let the log hold real captures instead of dropping them.
+ */
+export type GridPatch = { from: number; version: number; cells: Uint8Array };
+
+/** Writes a patch's cells into both grid layers. The only reader of the packing above. */
+export function applyPatchCells(cells: Uint8Array, owner: Uint8Array, trail: Uint8Array): void {
+  for (let at = 0; at + PATCH_STRIDE <= cells.length; at += PATCH_STRIDE) {
+    const index = cells[at] | (cells[at + 1] << 8);
+    owner[index] = cells[at + 2];
+    trail[index] = cells[at + 3];
+  }
+}
+
+/** Packs one changed cell at `at`. The only writer of the packing above. */
+export function writePatchCell(cells: Uint8Array, at: number, index: number, owner: number, trail: number): void {
+  cells[at] = index & 0xff;
+  cells[at + 1] = (index >> 8) & 0xff;
+  cells[at + 2] = owner;
+  cells[at + 3] = trail;
+}
 
 /** A full copy of both grid layers at one version. */
 export type GridState = { gridVersion: number; owner: Uint8Array; trail: Uint8Array };

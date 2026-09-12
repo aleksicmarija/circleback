@@ -1,10 +1,20 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Dir, Snapshot } from "@game/core";
-import { byCode, hydrate } from "./rooms";
+import { byCode, hydrate, toArrayBuffer } from "./rooms";
 
-/** The subscription payload: a `Snapshot` in "patches" mode, which never carries the byte layers. */
-type WireSnapshot = Omit<Snapshot, "owner" | "trail">;
+/**
+ * The subscription payload. Same shape as `@core`'s `Snapshot`, except every
+ * Uint8Array becomes Convex's bytes type on the wire. The grid layers are
+ * normally absent -- `Room.snapshot` includes them only when no patch can
+ * chain to the current version, so a client never has to stall on a separate
+ * fetch to redraw its board.
+ */
+type WireSnapshot = Omit<Snapshot, "owner" | "trail" | "patches"> & {
+  owner?: ArrayBuffer;
+  trail?: ArrayBuffer;
+  patches?: { from: number; version: number; cells: ArrayBuffer }[];
+};
 
 /**
  * The single subscription the client lives on. Convex re-runs this and pushes
@@ -18,8 +28,13 @@ export const snapshot = query({
   handler: async (ctx, { code }): Promise<WireSnapshot | null> => {
     const doc = await byCode(ctx, code.toUpperCase());
     if (!doc) return null;
-    const { owner: _owner, trail: _trail, ...snap } = hydrate(doc).snapshot(Date.now(), "patches");
-    return snap;
+    const snap = hydrate(doc).snapshot(Date.now(), "patches");
+    return {
+      ...snap,
+      owner: snap.owner ? toArrayBuffer(snap.owner) : undefined,
+      trail: snap.trail ? toArrayBuffer(snap.trail) : undefined,
+      patches: snap.patches?.map((p) => ({ from: p.from, version: p.version, cells: toArrayBuffer(p.cells) })),
+    };
   },
 });
 
