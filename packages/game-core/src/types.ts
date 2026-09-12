@@ -1,0 +1,52 @@
+/** 0 = north (z-), 1 = east (x+), 2 = south (z+), 3 = west (x-). */
+export type Dir = 0 | 1 | 2 | 3;
+
+export const DIR_DX: readonly number[] = [0, 1, 0, -1];
+export const DIR_DZ: readonly number[] = [-1, 0, 1, 0];
+
+export const opposite = (dir: Dir): Dir => ((dir + 2) % 4) as Dir;
+export const turnRight = (dir: Dir): Dir => ((dir + 1) % 4) as Dir;
+export const turnLeft = (dir: Dir): Dir => ((dir + 3) % 4) as Dir;
+
+export type PlayerId = string;
+
+/** What every client sees about a player. */
+export type PlayerSnapshot = {
+  id: PlayerId;
+  name: string;
+  /** Colour index, stable for the player's lifetime in the room. */
+  slot: number;
+  isBot: boolean;
+  alive: boolean;
+  /** Continuous position in cell units; cell (cx, cz) has its centre at (cx + 0.5, cz + 0.5). */
+  x: number;
+  z: number;
+  dir: Dir;
+  /** Cells of territory owned. Score = cells / (w * h). */
+  cells: number;
+  kills: number;
+  /** Milliseconds until respawn; 0 while alive. */
+  respawnIn: number;
+  /** Name of whoever cut this player off, while dead. */
+  killedBy: string | null;
+};
+
+/**
+ * One frame of authoritative state. The grid layers are only present when
+ * they changed since the previous snapshot sent to the same subscriber, so
+ * the client must keep the last ones it received.
+ *
+ * Grid encoding, both layers: 0 = nobody, otherwise slot + 1.
+ */
+export type Snapshot = {
+  code: string;
+  tick: number;
+  /** Server clock (ms) when the snapshot was taken. */
+  at: number;
+  w: number;
+  h: number;
+  gridVersion: number;
+  owner?: Uint8Array;
+  trail?: Uint8Array;
+  players: PlayerSnapshot[];
+};

@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as constants from "../constants.js";
 import type * as game from "../game.js";
 import type * as rooms from "../rooms.js";
 import type * as smoke from "../smoke.js";
@@ -21,7 +20,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  constants: typeof constants;
   game: typeof game;
   rooms: typeof rooms;
   smoke: typeof smoke;

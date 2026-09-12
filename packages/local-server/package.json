@@ -1,0 +1,7 @@
+{
+  "name": "@game/local-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "In-browser game server (runs the core simulation in a Web Worker)."
+}

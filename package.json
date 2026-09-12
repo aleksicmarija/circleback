@@ -12,13 +12,13 @@
   },
   "scripts": {
     "dev": "concurrently -n convex,web -c cyan,magenta \"npm:dev:convex\" \"npm:dev:web\"",
-    "dev:convex": "convex dev",
     "dev:web": "npm run dev -w apps/web",
+    "dev:convex": "convex dev",
     "dev:smoke": "npm run dev -w apps/smoke",
     "build": "npm run build -w apps/web",
     "build:smoke": "npm run build -w apps/smoke",
-    "typecheck": "tsc -p apps/web --noEmit && tsc -p apps/smoke --noEmit && tsc -p packages/backend/convex --noEmit",
-    "deploy": "convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'",
+    "typecheck": "tsc -p packages/game-core --noEmit && tsc -p packages/local-server --noEmit && tsc -p apps/web --noEmit && tsc -p apps/smoke --noEmit && tsc -p packages/backend/convex --noEmit",
+    "deploy": "convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd \"npm run build -w apps/web\"",
     "codegen": "convex codegen"
   },
   "devDependencies": {

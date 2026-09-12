@@ -1,54 +1,65 @@
-import { PLAYER_COLORS, MAX_PLAYERS } from "@backend/constants";
-import type { Snapshot } from "./net";
+import { PLAYER_COLORS, MAX_NAME_LENGTH, type Snapshot } from "@core";
 
 export type UiHandlers = {
-  onCreate: (name: string) => void;
-  onJoin: (code: string, name: string) => void;
-  onStart: () => void;
+  onPlay: (name: string, code: string | null) => void;
+  onHost: (name: string) => void;
   onLeave: () => void;
 };
 
+const menu = document.getElementById("menu") as HTMLDivElement;
 const hud = document.getElementById("hud") as HTMLDivElement;
+const roomInfo = document.getElementById("room-info") as HTMLDivElement;
+const leaderboard = document.getElementById("leaderboard") as HTMLOListElement;
+const score = document.getElementById("score") as HTMLDivElement;
+const overlay = document.getElementById("overlay") as HTMLDivElement;
+
 const NAME_KEY = "circleback.name";
 
 let handlers: UiHandlers;
+let overlayText = "";
 
 export function mount(next: UiHandlers): void {
   handlers = next;
+  (document.getElementById("leave") as HTMLButtonElement).onclick = () => handlers.onLeave();
 }
 
-function hex(colorIndex: number): string {
-  const color = PLAYER_COLORS[colorIndex % PLAYER_COLORS.length];
-  return `#${color.toString(16).padStart(6, "0")}`;
+function hex(slot: number): string {
+  return `#${PLAYER_COLORS[slot % PLAYER_COLORS.length].toString(16).padStart(6, "0")}`;
 }
 
-function panel(): HTMLDivElement {
-  hud.replaceChildren();
-  const element = document.createElement("div");
-  element.className = "panel";
-  hud.append(element);
-  return element;
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /** Menu is rebuilt only on explicit calls, so typing is never interrupted. */
 export function showMenu(error?: string): void {
-  const root = panel();
-  root.innerHTML = `
-    <h1>Circleback</h1>
-    <label for="name">Your name</label>
-    <input id="name" maxlength="16" placeholder="player" />
-    <label for="code">Room code (leave blank to host)</label>
-    <input id="code" maxlength="4" placeholder="ABCD" style="text-transform:uppercase" />
-    <div>
-      <button id="host">Host a room</button>
-      <button id="join" class="secondary">Join</button>
+  hud.hidden = true;
+  menu.hidden = false;
+  menu.innerHTML = `
+    <div class="panel">
+      <h1>Circleback</h1>
+      <p class="tagline">Claim territory. Cut trails. Don't get cut.</p>
+      <label for="name">Your name</label>
+      <input id="name" maxlength="${MAX_NAME_LENGTH}" placeholder="player" autocomplete="off" />
+      <button id="play">Play</button>
+      <details>
+        <summary>Private rooms</summary>
+        <label for="code">Room code</label>
+        <input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" style="text-transform:uppercase" />
+        <div>
+          <button id="join" class="secondary">Join room</button>
+          <button id="host" class="secondary">Host new room</button>
+        </div>
+      </details>
+      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+      <p class="hint">WASD / arrows to steer. Swipe on touch.</p>
     </div>
-    ${error ? `<p class="error">${error}</p>` : ""}
   `;
 
-  const nameField = root.querySelector("#name") as HTMLInputElement;
-  const codeField = root.querySelector("#code") as HTMLInputElement;
+  const nameField = menu.querySelector("#name") as HTMLInputElement;
+  const codeField = menu.querySelector("#code") as HTMLInputElement;
   nameField.value = localStorage.getItem(NAME_KEY) ?? "";
+  nameField.focus();
 
   const currentName = () => {
     const value = nameField.value.trim() || "player";
@@ -56,55 +67,64 @@ export function showMenu(error?: string): void {
     return value;
   };
 
-  (root.querySelector("#host") as HTMLButtonElement).onclick = () =>
-    handlers.onCreate(currentName());
-
-  (root.querySelector("#join") as HTMLButtonElement).onclick = () => {
+  (menu.querySelector("#play") as HTMLButtonElement).onclick = () => handlers.onPlay(currentName(), null);
+  nameField.onkeydown = (event) => {
+    if (event.key === "Enter") handlers.onPlay(currentName(), null);
+  };
+  (menu.querySelector("#host") as HTMLButtonElement).onclick = () => handlers.onHost(currentName());
+  (menu.querySelector("#join") as HTMLButtonElement).onclick = () => {
     const code = codeField.value.trim().toUpperCase();
     if (code.length !== 4) {
       showMenu("Enter the 4-character room code.");
       return;
     }
-    handlers.onJoin(code, currentName());
+    handlers.onPlay(currentName(), code);
   };
 }
 
-export function showRoom(snapshot: Snapshot, localPlayerId: string): void {
-  const root = panel();
-  const waiting = snapshot.status === "lobby";
-  const ended = snapshot.status === "ended";
+export function showHud(): void {
+  menu.hidden = true;
+  hud.hidden = false;
+  overlayText = "";
+  overlay.hidden = true;
+}
 
-  root.innerHTML = `
-    <h1>Room</h1>
-    <div class="code">${snapshot.code}</div>
-    <ul class="players">
-      ${snapshot.players
-        .map(
-          (player) => `
-        <li>
-          <span class="dot" style="background:${hex(player.colorIndex)}"></span>
-          ${player.name}${player.id === localPlayerId ? " (you)" : ""}
-        </li>`,
-        )
-        .join("")}
-    </ul>
-    <div>
-      ${waiting ? `<button id="start">Start game</button>` : ""}
-      ${ended ? `<button id="start">Play again</button>` : ""}
-      <button id="leave" class="secondary">Leave</button>
-    </div>
-    <p class="hint">
-      ${
-        waiting
-          ? `Share the code. Up to ${MAX_PLAYERS} players.`
-          : ended
-            ? "Round ended after a spell with no input."
-            : "Move with WASD or the arrow keys."
-      }
-    </p>
-  `;
+/** Leaderboard and score. Called a few times a second, not every tick. */
+export function updateHud(snapshot: Snapshot, localPlayerId: string): void {
+  const total = snapshot.w * snapshot.h;
+  const humans = snapshot.players.filter((p) => !p.isBot).length;
+  roomInfo.textContent = `Room ${snapshot.code} · ${humans} ${humans === 1 ? "human" : "humans"}`;
 
-  const start = root.querySelector("#start") as HTMLButtonElement | null;
-  if (start) start.onclick = () => handlers.onStart();
-  (root.querySelector("#leave") as HTMLButtonElement).onclick = () => handlers.onLeave();
+  const ranked = [...snapshot.players].sort((a, b) => b.cells - a.cells);
+  leaderboard.innerHTML = ranked
+    .slice(0, 5)
+    .map((p) => `
+      <li class="${p.id === localPlayerId ? "me" : ""}${p.alive ? "" : " dead"}">
+        <span class="dot" style="background:${hex(p.slot)}"></span>
+        <span class="name">${escapeHtml(p.name)}</span>
+        <span class="pct">${((p.cells / total) * 100).toFixed(1)}%</span>
+      </li>`)
+    .join("");
+
+  const me = snapshot.players.find((p) => p.id === localPlayerId);
+  if (me) {
+    const rank = ranked.indexOf(me) + 1;
+    score.innerHTML = `
+      <span class="big">${((me.cells / total) * 100).toFixed(1)}%</span>
+      <span>#${rank} · ${me.kills} ${me.kills === 1 ? "kill" : "kills"}</span>`;
+  }
+}
+
+/** Death notice. Called every frame; only touches the DOM when the text changes. */
+export function updateOverlay(snapshot: Snapshot, localPlayerId: string): void {
+  const me = snapshot.players.find((p) => p.id === localPlayerId);
+  let text = "";
+  if (me && !me.alive) {
+    const reason = me.killedBy ? `Cut off by ${me.killedBy}` : "You crashed";
+    text = `${reason}\nRespawning in ${(me.respawnIn / 1000).toFixed(1)}s`;
+  }
+  if (text === overlayText) return;
+  overlayText = text;
+  overlay.hidden = text === "";
+  overlay.textContent = text;
 }

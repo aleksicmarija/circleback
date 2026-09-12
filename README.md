@@ -1,76 +1,125 @@
 # Circleback
 
-A multiplayer browser game. Vanilla Three.js client, Convex backend, deployed to Render.
+A multiplayer territory game in the spirit of Color Galaxy / paper.io. Vanilla
+Three.js client. The backend is a pure TypeScript simulation that today runs
+**inside the browser** in a Web Worker, and is designed to move to a real
+server without touching game logic or the client.
 
 ```
 circleback/
-├── apps/web/                  <- FRONTEND. Three.js, Vite, TypeScript.
-│   └── src/
-│       ├── main.ts            entry point + render loop
-│       ├── scene.ts           Three.js scene graph and camera
-│       ├── input.ts           keyboard -> direction vector
-│       ├── interpolate.ts     smooths the 10Hz server tick to 60fps
-│       ├── net.ts             the ONLY file that talks to Convex
-│       └── ui.ts              DOM overlay (menu, room panel)
+├── packages/game-core/src/      <- THE GAME. Pure TS: no DOM, no Three, no transport.
+│   ├── constants.ts             tuning shared by simulation and renderer
+│   ├── types.ts                 Dir, PlayerSnapshot, Snapshot (the client-facing contract)
+│   ├── grid.ts                  territory + trail layers, flood-fill capture
+│   ├── room.ts                  one arena: movement, trails, kills, respawns
+│   └── bots.ts                  bot steering
 │
-├── packages/backend/convex/   <- BACKEND. Convex functions + schema.
-│   ├── schema.ts              tables and indexes
-│   ├── rooms.ts               create / join / leave / start
-│   ├── game.ts                snapshot query + input mutation
-│   ├── tick.ts                server-authoritative game loop
-│   └── constants.ts           tuning SHARED by both sides
+├── packages/local-server/src/   <- THE "SERVER". Also transport-agnostic.
+│   ├── protocol.ts              client <-> server messages (the wire format)
+│   ├── server.ts                GameServer: rooms, connections, tick loop, heartbeat
+│   └── worker.ts                ~20 lines: SharedWorker/Worker entry that feeds ports into GameServer
 │
-├── render.yaml                Render Blueprint (infrastructure as code)
-└── convex.json                points Convex at packages/backend/convex
+├── apps/web/src/                <- FRONTEND. Three.js, Vite, TypeScript.
+│   ├── backend/types.ts         `Backend` interface — the ONLY thing the client depends on
+│   ├── backend/local.ts         `Backend` over the worker (postMessage)
+│   ├── backend/index.ts         picks the implementation from VITE_BACKEND
+│   ├── main.ts                  entry point, session, render loop
+│   ├── scene.ts                 Three.js: board texture, avatars, camera
+│   ├── input.ts                 keys/swipes -> direction
+│   ├── interpolate.ts           smooths the 20Hz tick to 60fps
+│   └── ui.ts                    menu, leaderboard, death overlay
+│
+├── packages/backend/convex/     Convex backend from the first scaffold. Not used by the
+│                                client right now; see "Moving to a real server".
+└── render.yaml                  Render Blueprint (static site)
 ```
 
-## Who owns what
+## The rules
 
-| Area | Files | Owner |
-| --- | --- | --- |
-| Game rules, state, physics | `packages/backend/convex/**` | backend |
-| Rendering, input, UI | `apps/web/**` | frontend |
-| The contract between them | `constants.ts` + the `api.game.snapshot` return type | both — discuss before changing |
+- Everyone moves constantly. WASD / arrows (or a swipe) pick a direction; you
+  cannot reverse.
+- Leaving your territory draws a trail. Getting back home captures everything
+  the loop enclosed, including other people's land.
+- Driving over any trail kills its owner. Your own trail included.
+- Hitting the wall kills you. Dying wipes your territory; you respawn in 2.5s.
+- Bots top every room up to `MIN_PLAYERS`. A human joining a full room evicts a bot.
 
-The seam is deliberately narrow. The frontend only ever calls the helpers in
-`apps/web/src/net.ts`; nothing else imports Convex. The backend never knows
-Three.js exists.
-
-## First-time setup
+## Running it
 
 ```bash
-git clone git@github.com:aleksicmarija/circleback.git
-cd circleback
 npm install
-
-# Creates your own private Convex dev deployment and writes .env.local.
-# Ask Marija for an invite to the Convex team first.
-npx convex dev
+npm run dev:web      # http://localhost:5173 -- that's it, no accounts, no cloud
 ```
 
-Leave `npx convex dev` running — it watches `packages/backend/convex/` and
-pushes changes to *your own* deployment within a second. Your data is yours;
-you cannot break anyone else's.
-
-Then, in a second terminal:
-
-```bash
-npm run dev:web      # http://localhost:5173
-```
-
-Or run both at once with `npm run dev`.
-
-## Everyday commands
+Press **Play** to drop into the public arena. Open a second tab and press Play
+again: both tabs share one SharedWorker, so you are playing against yourself.
+"Host new room" / "Join room" give you private 4-letter rooms.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Convex watcher + Vite dev server together |
+| `npm run dev:web` | Vite dev server only, running the whole game (backend included) in a Web Worker -- the zero-setup path, no Convex account needed |
+| `npm run dev` | Convex watcher plus Vite together, for full-stack work against the Convex backend |
 | `npm run build` | Production build into `apps/web/dist` |
-| `npm run typecheck` | Typechecks the client and the Convex functions |
-| `npx convex dashboard` | Opens your deployment's data/logs browser |
+| `npm run typecheck` | Typechecks core, local server, client and the Convex functions |
 
-To play multiplayer locally, open two browser windows: host in one, join with
-the 4-character code in the other.
+Optional `.env.local` settings (see `.env.example`):
+
+- `VITE_BACKEND=convex` switches the client from the in-browser simulation to
+  the Convex backend (default is `local`). Used together with `npm run dev`.
+- `VITE_FAKE_LATENCY_MS=120` adds simulated round-trip latency to the local
+  backend. Use it to check that interpolation and input feel hold up.
+
+## How the pieces fit
+
+```
+   keys / swipe                 Backend interface                 GameServer
+ ┌────────────┐  setDirection  ┌──────────────┐  postMessage   ┌──────────────┐
+ │  main.ts   │ ─────────────▶ │ backend/     │ ─────────────▶ │ worker.ts    │
+ │  scene.ts  │ ◀───────────── │   local.ts   │ ◀───────────── │ server.ts    │
+ └────────────┘   snapshots    └──────────────┘   snapshots    │   Room x N   │
+   60 fps, interpolated                                        │  (game-core) │
+                                                               └──────────────┘
+                                                                  ticks at 20Hz
+```
+
+- **The server is authoritative.** The client sends a direction, never a
+  position. Every 50ms the server steps every room and pushes a `Snapshot`
+  to subscribers. The grid layers ride along only when they changed.
+- **The client renders 100ms in the past** (`INTERP_DELAY_MS`) so it always
+  has two snapshots to blend between. Respawns are detected as jumps and not
+  interpolated.
+- **Connections have a heartbeat.** A tab that vanishes without saying
+  goodbye is dropped after 8s and its player removed. Rooms with no humans
+  stop simulating and are deleted after 30s.
+- **Ownership is enforced server-side.** A connection can only steer or
+  remove players it created.
+
+## The Convex backend
+
+`packages/backend/convex/` is a second, production `Backend` implementation
+that behaves identically to the local one. Since a Convex mutation is a fresh
+invocation every time (nothing survives between calls except the database),
+its `tick.ts` reloads the room's persisted state, drives a real `Room`
+instance from `@game/core` exactly like `GameServer` does, and persists what
+changed -- see `Room.serialize()` / `Room.hydrate()` in `game-core/src/room.ts`.
+
+- **Schema** (`schema.ts`): one `rooms` row holds the entire room state as
+  flat top-level fields (not nested), so a tick that didn't touch the grid
+  can omit the `owner`/`trail` bytes from its patch. `playerRooms` mirrors
+  `GameServer`'s in-memory `playerId -> connection` map, since `leaveRoom`/
+  `setDirection` only take a player id.
+- **`rooms.ts`** has `create` / `join` / `leave`, mirroring `GameServer`'s
+  methods of the same shape.
+- **`tick.ts`** is the scheduled loop: it reschedules itself every `TICK_MS`
+  and stops for good once a room's document is deleted (idle rooms are
+  deleted after `ROOM_IDLE_MS`).
+- **`game.ts`** has the `snapshot` query the client subscribes to (Convex's
+  bytes type is `ArrayBuffer`; the client adapter converts it back to the
+  `Uint8Array` the rest of `apps/web` expects) and `setDirection`.
+
+Nothing in `packages/game-core` or `packages/local-server/src/server.ts`
+knows which backend is driving it, and the client stays as it is either way,
+because it only ever imports `./backend`.
 
 ---
 
@@ -167,38 +216,3 @@ deploy-on-push later, set `autoDeploy: true` in `render.yaml`.
 work can never touch production data.
 
 ---
-
-# Design notes
-
-## The tick loop
-
-The game is server-authoritative. Clients send a *direction*, never a position,
-so a modified client cannot teleport. `tick.ts` is a Convex mutation that
-reschedules itself every `TICK_MS` (100ms), integrates velocities, and writes
-positions.
-
-**It costs function calls the whole time it runs**, so it stops itself when:
-
-- the room is deleted, or is no longer `playing`
-- a newer loop has taken over (`tickToken` mismatch — prevents double loops)
-- every player has left
-- nobody has sent input for `IDLE_STOP_MS` (60s)
-
-If you change the tick rate, know what you are buying: 10Hz is ~36,000 function
-calls per hour per active room.
-
-## Why the client renders in the past
-
-The server ticks at 10Hz but the browser draws at 60fps. `interpolate.ts` keeps
-a short buffer of snapshots and renders `INTERP_DELAY_MS` (200ms) behind the
-newest one, blending between the two that bracket that moment. This is what
-makes movement look smooth instead of stepping 10 times a second.
-
-Raising `INTERP_DELAY_MS` looks smoother under bad network conditions and feels
-laggier. Lowering it feels sharper and stutters sooner.
-
-## Cost control
-
-Writes only happen when something changes: the tick skips players who did not
-move, and the client sends input only when the direction changes. An idle room
-performs zero database writes, and the loop shuts down a minute later.
