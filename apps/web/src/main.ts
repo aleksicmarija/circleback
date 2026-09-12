@@ -17,8 +17,8 @@ let unsubscribe: (() => void) | null = null;
 let grid: GridSync | null = null;
 /**
  * Board changes and effects wait here until the interpolated pieces catch up.
- * Players are drawn `interpolate.currentDelay()` behind the feed; painting
- * the trail on arrival would put it a cell or two ahead of the pet drawing it.
+ * Keyed by the snapshot's server clock, the same timeline the pieces are drawn
+ * on, so the trail appears exactly under the pet that drew it.
  */
 let pendingBoard: { at: number; snapshot: Snapshot }[] = [];
 let applied: Snapshot | null = null;
@@ -76,8 +76,8 @@ function connect(next: Session): void {
     }
 
     latest = incoming;
-    interpolate.record(incoming.players);
-    pendingBoard.push({ at: performance.now(), snapshot: incoming });
+    interpolate.record(incoming.at, incoming.players);
+    pendingBoard.push({ at: incoming.at, snapshot: incoming });
 
     const now = performance.now();
     if (now - hudUpdatedAt > HUD_INTERVAL_MS) {
@@ -101,7 +101,7 @@ function disconnect(): void {
 
 /** Paints board changes and fires effects for every snapshot the render time has reached. */
 function applyDueBoard(now: number): void {
-  const due = now - interpolate.currentDelay();
+  const due = interpolate.renderTime(now);
   while (pendingBoard.length > 0 && pendingBoard[0].at <= due) {
     const { snapshot } = pendingBoard.shift()!;
     if (session) react(applied, snapshot, session.playerId);

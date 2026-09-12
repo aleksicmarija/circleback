@@ -89,8 +89,8 @@ backend.watchRoom(code, (incoming) => {
   }
   setStatus(null);
   latest = incoming;
-  interpolate.record(incoming.players);
-  pendingBoard.push({ at: performance.now(), snapshot: incoming });
+  interpolate.record(incoming.at, incoming.players);
+  pendingBoard.push({ at: incoming.at, snapshot: incoming });
 
   const now = performance.now();
   if (now - boardUpdatedAt > 250) {
@@ -101,7 +101,7 @@ backend.watchRoom(code, (incoming) => {
 
 function frame(): void {
   const now = performance.now();
-  const due = now - interpolate.currentDelay();
+  const due = interpolate.renderTime(now);
   while (pendingBoard.length > 0 && pendingBoard[0].at <= due) grid.apply(pendingBoard.shift()!.snapshot);
   scene.syncPlayers(interpolate.sample(now), null);
   scene.render();
