@@ -3,8 +3,12 @@ import { api } from "@backend/_generated/api";
 import type { Dir, PlayerId, Snapshot } from "@core";
 import type { Backend } from "./types";
 
-/** Convex's wire type for the grid layers is ArrayBuffer; `@core` wants Uint8Array. */
-type WireSnapshot = Omit<Snapshot, "owner" | "trail"> & { owner?: ArrayBuffer; trail?: ArrayBuffer };
+/** Convex's wire type for every byte array is ArrayBuffer; `@core` wants Uint8Array. */
+type WireSnapshot = Omit<Snapshot, "owner" | "trail" | "patches"> & {
+  owner?: ArrayBuffer;
+  trail?: ArrayBuffer;
+  patches?: { from: number; version: number; cells: ArrayBuffer }[];
+};
 
 function toSnapshot(wire: WireSnapshot | null): Snapshot | null {
   if (!wire) return null;
@@ -12,6 +16,7 @@ function toSnapshot(wire: WireSnapshot | null): Snapshot | null {
     ...wire,
     owner: wire.owner ? new Uint8Array(wire.owner) : undefined,
     trail: wire.trail ? new Uint8Array(wire.trail) : undefined,
+    patches: wire.patches?.map((p) => ({ from: p.from, version: p.version, cells: new Uint8Array(p.cells) })),
   };
 }
 

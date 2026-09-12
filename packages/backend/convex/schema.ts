@@ -24,7 +24,7 @@ export default defineSchema({
     // these instead of the 8 KB layers; clients refetch the full grid only
     // when they fall behind the log.
     gridLog: v.array(
-      v.object({ from: v.number(), version: v.number(), cells: v.array(v.number()) }),
+      v.object({ from: v.number(), version: v.number(), cells: v.bytes() }),
     ),
     players: v.array(
       v.object({

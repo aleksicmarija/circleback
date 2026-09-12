@@ -1,4 +1,4 @@
-import { GRID_W, GRID_H, type GridState, type Snapshot } from "@core";
+import { GRID_W, GRID_H, applyPatchCells, type GridState, type Snapshot } from "@core";
 
 /**
  * Keeps a local copy of both grid layers in step with the server.
@@ -32,11 +32,7 @@ export class GridSync {
     let changed = false;
     for (const patch of snapshot.patches ?? []) {
       if (patch.from !== this.version) continue;
-      const { cells } = patch;
-      for (let i = 0; i < cells.length; i += 3) {
-        this.owner[cells[i]] = cells[i + 1];
-        this.trail[cells[i]] = cells[i + 2];
-      }
+      applyPatchCells(patch.cells, this.owner, this.trail);
       this.version = patch.version;
       changed = true;
     }

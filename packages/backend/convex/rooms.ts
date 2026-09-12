@@ -27,11 +27,14 @@ export function hydrate(doc: Doc<"rooms">): Room {
     nextBotName: doc.nextBotName,
     owner: new Uint8Array(doc.owner),
     trail: new Uint8Array(doc.trail),
-    gridLog: doc.gridLog,
+    gridLog: doc.gridLog.map((p) => ({ ...p, cells: new Uint8Array(p.cells) })),
     players: doc.players as PlayerState[],
   };
   return Room.hydrate(state, Math.random, makeId);
 }
+
+/** The patch log as it is stored: `cells` is Convex bytes, not a Uint8Array. */
+type WireGridPatch = { from: number; version: number; cells: ArrayBuffer };
 
 type RoomFields = {
   tick: number;
@@ -39,7 +42,7 @@ type RoomFields = {
   lastStepAt: number | null;
   nextId: number;
   nextBotName: number;
-  gridLog: RoomState["gridLog"];
+  gridLog: WireGridPatch[];
   players: PlayerState[];
   owner: ArrayBuffer;
   trail: ArrayBuffer;
@@ -54,7 +57,7 @@ function fieldsForInsert(room: Room): RoomFields {
     lastStepAt: state.lastStepAt,
     nextId: state.nextId,
     nextBotName: state.nextBotName,
-    gridLog: state.gridLog,
+    gridLog: toWireLog(state.gridLog),
     players: state.players,
     owner: toArrayBuffer(state.owner),
     trail: toArrayBuffer(state.trail),
@@ -70,7 +73,7 @@ export function patchFromRoom(room: Room, writtenGridVersion: number): Partial<R
     lastStepAt: state.lastStepAt,
     nextId: state.nextId,
     nextBotName: state.nextBotName,
-    gridLog: state.gridLog,
+    gridLog: toWireLog(state.gridLog),
     players: state.players,
   };
   if (state.gridVersion !== writtenGridVersion) {
@@ -80,7 +83,11 @@ export function patchFromRoom(room: Room, writtenGridVersion: number): Partial<R
   return patch;
 }
 
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+function toWireLog(log: RoomState["gridLog"]): WireGridPatch[] {
+  return log.map((p) => ({ from: p.from, version: p.version, cells: toArrayBuffer(p.cells) }));
+}
+
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 

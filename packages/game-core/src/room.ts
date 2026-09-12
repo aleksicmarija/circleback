@@ -1,10 +1,11 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, MAX_PATCH_CELLS, IDLE_KICK_MS,
+  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, GRID_LOG_MAX_BYTES,
+  MAX_PATCH_CELLS, IDLE_KICK_MS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
-  DIR_DX, DIR_DZ, opposite, turnLeft, turnRight,
+  DIR_DX, DIR_DZ, PATCH_STRIDE, opposite, turnLeft, turnRight, writePatchCell,
   type Dir, type GridMode, type GridPatch, type GridState, type PlayerId, type PlayerSnapshot, type Snapshot,
 } from "./types";
 import { createBotState, decideBot, pickTargetTrail, type BotState } from "./bots";
@@ -121,7 +122,7 @@ export class Room {
       nextBotName: this.nextBotName,
       owner: this.grid.owner.slice(),
       trail: this.grid.trail.slice(),
-      gridLog: this.gridLog.map((p) => ({ ...p, cells: [...p.cells] })),
+      gridLog: this.gridLog.map((p) => ({ ...p, cells: p.cells.slice() })),
       players: [...this.players.values()].map((p) => ({ ...p, trailCells: [...p.trailCells] })),
     };
   }
@@ -137,7 +138,7 @@ export class Room {
     room.grid.trail.set(state.trail);
     room.shadowOwner.set(state.owner);
     room.shadowTrail.set(state.trail);
-    room.gridLog = state.gridLog.map((p) => ({ ...p, cells: [...p.cells] }));
+    room.gridLog = state.gridLog.map((p) => ({ ...p, cells: p.cells.slice() }));
     room.loggedVersion = state.gridVersion;
     room.tick = state.tick;
     room.gridVersion = state.gridVersion;
@@ -312,9 +313,13 @@ export class Room {
       w: this.grid.w,
       h: this.grid.h,
       gridVersion: this.gridVersion,
-      owner: grid === "full" ? this.grid.owner.slice() : undefined,
-      trail: grid === "full" ? this.grid.trail.slice() : undefined,
-      patches: grid === "patches" ? this.gridLog.map((p) => ({ ...p, cells: [...p.cells] })) : undefined,
+      // An empty log means no patch can chain to the current version: a change
+      // too big to log, or a room that has only just started. Send the layers
+      // in this snapshot rather than making every client fetch them, which
+      // would stall its board for a round trip.
+      owner: grid === "full" || this.logIsEmpty() ? this.grid.owner.slice() : undefined,
+      trail: grid === "full" || this.logIsEmpty() ? this.grid.trail.slice() : undefined,
+      patches: grid === "patches" ? this.gridLog.map((p) => ({ ...p, cells: p.cells.slice() })) : undefined,
       players,
     };
   }
@@ -327,22 +332,46 @@ export class Room {
   private flushGridLog(): void {
     if (this.gridVersion === this.loggedVersion) return;
     const { owner, trail } = this.grid;
-    const cells: number[] = [];
+
+    const packed = new Uint8Array(owner.length * PATCH_STRIDE);
+    let at = 0;
     for (let i = 0; i < owner.length; i++) {
       if (owner[i] !== this.shadowOwner[i] || trail[i] !== this.shadowTrail[i]) {
-        cells.push(i, owner[i], trail[i]);
+        writePatchCell(packed, at, i, owner[i], trail[i]);
+        at += PATCH_STRIDE;
         this.shadowOwner[i] = owner[i];
         this.shadowTrail[i] = trail[i];
       }
     }
-    // A huge change is deliberately left out of the log. No patch will chain
-    // from the previous version, so every client detects the gap and fetches
-    // the full grid once, which is cheaper than the patch would have been.
-    if (cells.length / 3 <= MAX_PATCH_CELLS) {
-      this.gridLog.push({ from: this.loggedVersion, version: this.gridVersion, cells });
-      if (this.gridLog.length > GRID_LOG_LENGTH) this.gridLog.splice(0, this.gridLog.length - GRID_LOG_LENGTH);
+
+    if (at / PATCH_STRIDE <= MAX_PATCH_CELLS) {
+      this.gridLog.push({ from: this.loggedVersion, version: this.gridVersion, cells: packed.slice(0, at) });
+      this.trimGridLog();
+    } else {
+      // Past the break-even point the patch would cost more than both layers.
+      // Clearing the log tells `snapshot` to send the layers instead, in the
+      // same message clients are already receiving.
+      this.gridLog.length = 0;
     }
     this.loggedVersion = this.gridVersion;
+  }
+
+  /** True while no patch chains to the current version, so clients need the layers. */
+  private logIsEmpty(): boolean {
+    return this.gridLog.length === 0;
+  }
+
+  /** Bounds the log by both entry count and total bytes; the room row is rewritten every tick. */
+  private trimGridLog(): void {
+    if (this.gridLog.length > GRID_LOG_LENGTH) {
+      this.gridLog.splice(0, this.gridLog.length - GRID_LOG_LENGTH);
+    }
+    let bytes = 0;
+    for (const patch of this.gridLog) bytes += patch.cells.length;
+    while (this.gridLog.length > 1 && bytes > GRID_LOG_MAX_BYTES) {
+      bytes -= this.gridLog[0].cells.length;
+      this.gridLog.shift();
+    }
   }
 
   // ---- internals ---------------------------------------------------------
