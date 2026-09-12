@@ -33,6 +33,14 @@ export const DEFAULT_ROOM_CODE = "MAIN";
 /** How many grid patches a room remembers; a client further behind than this refetches the full grid. */
 export const GRID_LOG_LENGTH = 6;
 
+/**
+ * A change touching more cells than this (a big capture, a wipe) is not
+ * logged as a patch; clients resync from the full grid instead. Keeps every
+ * patch under Convex's 8192-element array limit (3 numbers per cell) and
+ * avoids shipping a patch bigger than the grid itself.
+ */
+export const MAX_PATCH_CELLS = 512;
+
 /** A human who has not sent any input for this long is removed from the room. */
 export const IDLE_KICK_MS = 45_000;
 

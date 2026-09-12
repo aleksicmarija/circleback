@@ -1,6 +1,6 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, IDLE_KICK_MS,
+  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, MAX_PATCH_CELLS, IDLE_KICK_MS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
@@ -335,8 +335,13 @@ export class Room {
         this.shadowTrail[i] = trail[i];
       }
     }
-    this.gridLog.push({ from: this.loggedVersion, version: this.gridVersion, cells });
-    if (this.gridLog.length > GRID_LOG_LENGTH) this.gridLog.splice(0, this.gridLog.length - GRID_LOG_LENGTH);
+    // A huge change is deliberately left out of the log. No patch will chain
+    // from the previous version, so every client detects the gap and fetches
+    // the full grid once, which is cheaper than the patch would have been.
+    if (cells.length / 3 <= MAX_PATCH_CELLS) {
+      this.gridLog.push({ from: this.loggedVersion, version: this.gridVersion, cells });
+      if (this.gridLog.length > GRID_LOG_LENGTH) this.gridLog.splice(0, this.gridLog.length - GRID_LOG_LENGTH);
+    }
     this.loggedVersion = this.gridVersion;
   }
 
