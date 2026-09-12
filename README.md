@@ -49,7 +49,7 @@ different hosts drive that same code unchanged:
 - an **in-browser server** running in a SharedWorker, which is how we
   prototyped all day with zero infrastructure (two tabs in one browser play
   against each other), and
-- the **Convex backend**, where a scheduled mutation ticks every room 20 times
+- the **Convex backend**, where a scheduled mutation ticks every room 10 times
   a second, persisting the room state between invocations.
 
 The client does not know or care which one it is talking to. It only speaks
@@ -68,7 +68,7 @@ direction we want to take this (see the roadmap below).
 | Partner | What it does for Circleback |
 | --- | --- |
 | **Grok Bot / Cursor** | The whole codebase was written in the host editor with agents during the hackathon. The commit history is the audit trail. |
-| **Convex** | Production backend. Rooms are Convex documents, a self-rescheduling internal mutation is the authoritative 20 Hz game loop, and one live query per room streams snapshots to every client over Convex's WebSocket. No sockets, no Postgres, no server process of our own. |
+| **Convex** | Production backend. Rooms are Convex documents, a self-rescheduling internal mutation is the authoritative 10 Hz game loop, and one live query per room streams snapshots to every client over Convex's WebSocket. No sockets, no Postgres, no server process of our own. |
 | **Render** | Hosts the static Three.js client from a Blueprint (`render.yaml`). The build command deploys the Convex functions and bakes the production Convex URL into the bundle in one step. |
 | **Kenney (CC0)** | 3D pets and robots, sounds, music, and the display font. Not a hackathon partner, but worth crediting: every asset is handmade by [Kenney](https://kenney.nl) and released as public domain. **No art in this project was AI-generated.** |
 
@@ -111,7 +111,7 @@ Repository layout:
 circleback/
 ├── packages/game-core/      THE GAME. Pure TypeScript rules: grid, trails, capture,
 │                            kills, respawns, bot steering. No DOM, no Three, no network.
-├── packages/local-server/   In-browser server: GameServer (rooms, connections, 20Hz
+├── packages/local-server/   In-browser server: GameServer (rooms, connections, 10Hz
 │                            loop, heartbeat) plus a 20-line SharedWorker entry.
 ├── packages/backend/convex/ Production server: Convex functions that hydrate a Room
 │                            from a document, tick it, and stream snapshots.
@@ -158,12 +158,14 @@ Optional `.env.local` settings (see `.env.example`):
  └────────────┘   snapshots    └──────────────┘   snapshots    │   Room x N   │
    60 fps, interpolated                                        │  (game-core) │
                                                                └──────────────┘
-                                                                  ticks at 20Hz
+                                                                  ticks at 10Hz
 ```
 
 - **The server is authoritative.** The client sends a direction, never a
-  position. Every 50ms the server steps every room and pushes a `Snapshot`
-  to subscribers. The grid layers ride along only when they changed.
+  position. Every 100ms the server steps every room and pushes a `Snapshot`
+  to subscribers. Snapshots carry a short log of changed cells, a few
+  hundred bytes, instead of the 8 KB grid; a client that falls behind the
+  log fetches the full grid once.
 - **The client renders 100ms in the past** (`INTERP_DELAY_MS`) so it always
   has two snapshots to blend between. Respawns are detected as jumps and not
   interpolated.
@@ -192,9 +194,11 @@ changed -- see `Room.serialize()` / `Room.hydrate()` in `game-core/src/room.ts`.
 - **`tick.ts`** is the scheduled loop: it reschedules itself every `TICK_MS`
   and stops for good once a room's document is deleted (idle rooms are
   deleted after `ROOM_IDLE_MS`).
-- **`game.ts`** has the `snapshot` query the client subscribes to (Convex's
-  bytes type is `ArrayBuffer`; the client adapter converts it back to the
-  `Uint8Array` the rest of `apps/web` expects) and `setDirection`.
+- **`game.ts`** has the `snapshot` query the client subscribes to (players
+  plus the grid change log, never the byte layers), the one-shot `grid` query
+  a client calls when it falls behind that log, and `setDirection`, which only
+  inserts into the `inputs` table so a keypress never contends with the tick's
+  write of the room document. The tick drains `inputs` before it steps.
 
 Nothing in `packages/game-core` or `packages/local-server/src/server.ts`
 knows which backend is driving it, and the client stays as it is either way,

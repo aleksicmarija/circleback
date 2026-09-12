@@ -49,7 +49,7 @@ describe("Room.serialize / Room.hydrate", () => {
 
         expect(clone.grid.owner).toEqual(original.grid.owner);
         expect(clone.grid.trail).toEqual(original.grid.trail);
-        expect(clone.snapshot(now, false)).toEqual(original.snapshot(now, false));
+        expect(clone.snapshot(now, "patches")).toEqual(original.snapshot(now, "patches"));
       }
     }
 

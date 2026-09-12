@@ -1,7 +1,7 @@
 import type { Dir, PlayerId, Snapshot } from "@core";
 import {
   PING_INTERVAL_MS,
-  type ClientMessage, type JoinResult, type Request, type ServerMessage,
+  type ClientMessage, type GridResult, type JoinResult, type Request, type ServerMessage,
 } from "@server/protocol";
 import SimSharedWorker from "@server/worker?sharedworker";
 import SimWorker from "@server/worker?worker";
@@ -70,6 +70,10 @@ export function createLocalBackend(): Backend {
 
     setDirection(playerId: PlayerId, dir: Dir) {
       post({ type: "direction", playerId, dir });
+    },
+
+    fetchGrid(code) {
+      return request<GridResult>({ type: "grid", code: code.toUpperCase() });
     },
 
     watchRoom(code, onSnapshot) {

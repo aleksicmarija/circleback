@@ -4,14 +4,14 @@
 export const GRID_W = 64;
 export const GRID_H = 64;
 
-/** Simulation step. 50ms = 20 ticks/sec. */
-export const TICK_MS = 50;
+/** Simulation step. 100ms = 10 ticks/sec; movement is dt-based so this only affects smoothness and cost. */
+export const TICK_MS = 100;
 
 /** Movement speed in cells per second. Players never stop moving. */
 export const PLAYER_SPEED = 6.5;
 
 /** Client renders this far behind the newest snapshot so it always has two to blend between. */
-export const INTERP_DELAY_MS = 100;
+export const INTERP_DELAY_MS = 200;
 
 /** Time between dying and reappearing somewhere fresh. */
 export const RESPAWN_MS = 2500;
@@ -29,6 +29,9 @@ export const MAX_NAME_LENGTH = 16;
 
 /** The public arena everyone lands in when they just press Play. */
 export const DEFAULT_ROOM_CODE = "MAIN";
+
+/** How many grid patches a room remembers; a client further behind than this refetches the full grid. */
+export const GRID_LOG_LENGTH = 6;
 
 /** A room with no humans in it is deleted after this long. */
 export const ROOM_IDLE_MS = 30_000;

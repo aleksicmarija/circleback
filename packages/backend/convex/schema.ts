@@ -20,6 +20,12 @@ export default defineSchema({
     nextBotName: v.number(),
     owner: v.bytes(), // Uint8Array, GRID_W * GRID_H
     trail: v.bytes(), // same size
+    // Recent grid changes (see core `GridPatch`). The snapshot query ships
+    // these instead of the 8 KB layers; clients refetch the full grid only
+    // when they fall behind the log.
+    gridLog: v.array(
+      v.object({ from: v.number(), version: v.number(), cells: v.array(v.number()) }),
+    ),
     players: v.array(
       v.object({
         id: v.string(),
@@ -58,6 +64,16 @@ export default defineSchema({
     playerId: v.string(),
     code: v.string(),
   }).index("by_player", ["playerId"]),
+
+  // Pending direction changes. `setDirection` only inserts here, so a
+  // keypress never rewrites the room document and never contends with the
+  // tick's write; the tick drains this table for its room each time it runs.
+  inputs: defineTable({
+    code: v.string(),
+    playerId: v.string(),
+    dir: v.number(),
+    at: v.number(),
+  }).index("by_code", ["code"]),
 
   // Pipeline smoke test only (apps/smoke + smoke.ts). Unrelated to the game.
   smoke_pings: defineTable({

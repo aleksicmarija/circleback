@@ -21,8 +21,6 @@ export type Connection = {
 type RoomEntry = {
   room: Room;
   subscribers: Set<Connection>;
-  /** gridVersion at the last broadcast, so unchanged grids are not resent. */
-  sentGridVersion: number;
   /** Since when nobody (player or spectator) has been in the room; deleted after ROOM_IDLE_MS. */
   emptySince: number | null;
 };
@@ -121,10 +119,13 @@ export class GameServer {
         if (!entry) throw new Error(`No room with code ${code}`);
         entry.subscribers.add(connection);
         connection.subscriptions.add(code);
-        // A fresh subscriber needs the full grid straight away.
-        connection.send({ type: "snapshot", code, snapshot: entry.room.snapshot(this.clock(), true) });
+        // A fresh subscriber needs the full grid straight away; after that, patches.
+        connection.send({ type: "snapshot", code, snapshot: entry.room.snapshot(this.clock(), "full") });
         return null;
       }
+
+      case "grid":
+        return this.rooms.get(message.code.toUpperCase())?.room.gridState() ?? null;
 
       case "unsubscribe": {
         const code = message.code.toUpperCase();
@@ -156,7 +157,6 @@ export class GameServer {
     const entry: RoomEntry = {
       room: new Room(code, Math.random, (isBot) => `${isBot ? "b" : "p"}${this.nextPlayerId++}`),
       subscribers: new Set(),
-      sentGridVersion: 0,
       emptySince: this.clock(),
     };
     entry.room.ensureBots(this.clock());
@@ -203,9 +203,7 @@ export class GameServer {
       entry.room.step(now);
 
       if (entry.subscribers.size === 0) continue;
-      const includeGrid = entry.room.gridVersion !== entry.sentGridVersion;
-      const snapshot = entry.room.snapshot(now, includeGrid);
-      entry.sentGridVersion = entry.room.gridVersion;
+      const snapshot = entry.room.snapshot(now, "patches");
       for (const connection of entry.subscribers) {
         connection.send({ type: "snapshot", code, snapshot });
       }

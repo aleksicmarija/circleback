@@ -1,4 +1,4 @@
-import type { Dir, PlayerId, Snapshot } from "@core";
+import type { Dir, GridState, PlayerId, Snapshot } from "@core";
 
 /**
  * The wire protocol between a client and the game server.
@@ -8,6 +8,7 @@ import type { Dir, PlayerId, Snapshot } from "@core";
  */
 
 export type JoinResult = { code: string; playerId: PlayerId };
+export type GridResult = GridState | null;
 
 /** Requests get a numbered reply. */
 export type Request =
@@ -15,7 +16,9 @@ export type Request =
   | { type: "join"; code: string | null; name: string; skin?: string }
   | { type: "leave"; playerId: PlayerId }
   | { type: "subscribe"; code: string }
-  | { type: "unsubscribe"; code: string };
+  | { type: "unsubscribe"; code: string }
+  /** Full grid for a client that fell behind the patch log. Replies with a GridState or null. */
+  | { type: "grid"; code: string };
 
 export type ClientMessage =
   | ({ id: number } & Request)

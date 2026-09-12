@@ -1,8 +1,22 @@
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { ROOM_IDLE_MS, TICK_MS } from "@game/core";
+import { ROOM_IDLE_MS, TICK_MS, type Dir } from "@game/core";
 import { byCode, hydrate, patchFromRoom } from "./rooms";
+import type { MutationCtx } from "./_generated/server";
+
+/** Applies and clears every queued direction change for a room, oldest first. */
+async function drainInputs(ctx: MutationCtx, code: string, apply: (playerId: string, dir: Dir) => void): Promise<void> {
+  const pending = await ctx.db
+    .query("inputs")
+    .withIndex("by_code", (q) => q.eq("code", code))
+    .collect();
+  pending.sort((a, b) => a.at - b.at || a._creationTime - b._creationTime);
+  for (const input of pending) {
+    apply(input.playerId, input.dir as Dir);
+    await ctx.db.delete(input._id);
+  }
+}
 
 /**
  * The server-authoritative game loop: one Convex mutation that reschedules
@@ -22,6 +36,7 @@ export const tick = internalMutation({
     if (room.humanCount === 0) {
       const emptySince = doc.emptySince ?? now;
       if (now - emptySince > ROOM_IDLE_MS) {
+        await drainInputs(ctx, code, () => {});
         await ctx.db.delete(doc._id);
         return;
       }
@@ -31,6 +46,7 @@ export const tick = internalMutation({
     }
 
     room.ensureBots(now);
+    await drainInputs(ctx, code, (playerId, dir) => room.setDirection(playerId, dir));
     room.step(now);
     await ctx.db.patch(doc._id, { emptySince: undefined, ...patchFromRoom(room, doc.gridVersion) });
     await ctx.scheduler.runAfter(TICK_MS, internal.tick.tick, { code });

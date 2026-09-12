@@ -1,11 +1,11 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS,
+  MAX_PLAYERS, MIN_PLAYERS, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH,
 } from "./constants";
 import { Grid } from "./grid";
 import {
   DIR_DX, DIR_DZ, opposite, turnLeft, turnRight,
-  type Dir, type PlayerId, type PlayerSnapshot, type Snapshot,
+  type Dir, type GridMode, type GridPatch, type GridState, type PlayerId, type PlayerSnapshot, type Snapshot,
 } from "./types";
 import { createBotState, decideBot, pickTargetTrail, type BotState } from "./bots";
 
@@ -60,6 +60,8 @@ export type RoomState = {
   nextBotName: number;
   owner: Uint8Array;
   trail: Uint8Array;
+  /** Recent grid changes, oldest first; see `Snapshot.patches`. */
+  gridLog: GridPatch[];
   players: PlayerState[];
 };
 
@@ -85,6 +87,11 @@ export class Room {
   private readonly bySlot: (Player | null)[] = new Array(MAX_PLAYERS).fill(null);
   private readonly counts = new Uint32Array(MAX_PLAYERS + 1);
   private countedVersion = 0;
+  /** Change log between flushes; `shadow*` is the grid as of the last flush. */
+  private gridLog: GridPatch[] = [];
+  private readonly shadowOwner = new Uint8Array(GRID_W * GRID_H);
+  private readonly shadowTrail = new Uint8Array(GRID_W * GRID_H);
+  private loggedVersion = 1;
   private lastStepAt: number | null = null;
   private nextId = 1;
   private nextBotName = 0;
@@ -112,6 +119,7 @@ export class Room {
       nextBotName: this.nextBotName,
       owner: this.grid.owner.slice(),
       trail: this.grid.trail.slice(),
+      gridLog: this.gridLog.map((p) => ({ ...p, cells: [...p.cells] })),
       players: [...this.players.values()].map((p) => ({ ...p, trailCells: [...p.trailCells] })),
     };
   }
@@ -125,6 +133,10 @@ export class Room {
     const room = new Room(state.code, random, makeId);
     room.grid.owner.set(state.owner);
     room.grid.trail.set(state.trail);
+    room.shadowOwner.set(state.owner);
+    room.shadowTrail.set(state.trail);
+    room.gridLog = state.gridLog.map((p) => ({ ...p, cells: [...p.cells] }));
+    room.loggedVersion = state.gridVersion;
     room.tick = state.tick;
     room.gridVersion = state.gridVersion;
     room.lastStepAt = state.lastStepAt;
@@ -178,6 +190,7 @@ export class Room {
     this.players.set(player.id, player);
     this.bySlot[slot] = player;
     this.spawn(player);
+    this.flushGridLog();
     return player;
   }
 
@@ -187,6 +200,7 @@ export class Room {
     this.clearFootprint(player);
     this.players.delete(id);
     this.bySlot[player.slot] = null;
+    this.flushGridLog();
   }
 
   /** Tops the room up with bots to MIN_PLAYERS. */
@@ -236,9 +250,15 @@ export class Room {
     }
 
     this.resolveHeadOn(now);
+    this.flushGridLog();
   }
 
-  snapshot(now: number, includeGrid: boolean): Snapshot {
+  /** Both grid layers as they are right now, for a client that needs to resync. */
+  gridState(): GridState {
+    return { gridVersion: this.gridVersion, owner: this.grid.owner.slice(), trail: this.grid.trail.slice() };
+  }
+
+  snapshot(now: number, grid: GridMode = "patches"): Snapshot {
     if (this.countedVersion !== this.gridVersion) {
       this.grid.count(this.counts);
       this.countedVersion = this.gridVersion;
@@ -271,10 +291,32 @@ export class Room {
       w: this.grid.w,
       h: this.grid.h,
       gridVersion: this.gridVersion,
-      owner: includeGrid ? this.grid.owner.slice() : undefined,
-      trail: includeGrid ? this.grid.trail.slice() : undefined,
+      owner: grid === "full" ? this.grid.owner.slice() : undefined,
+      trail: grid === "full" ? this.grid.trail.slice() : undefined,
+      patches: grid === "patches" ? this.gridLog.map((p) => ({ ...p, cells: [...p.cells] })) : undefined,
       players,
     };
+  }
+
+  /**
+   * Records what changed on the grid since the last flush as one patch.
+   * Called after every unit of work that can touch the grid, so each patch
+   * spans exactly the versions a snapshot could observe.
+   */
+  private flushGridLog(): void {
+    if (this.gridVersion === this.loggedVersion) return;
+    const { owner, trail } = this.grid;
+    const cells: number[] = [];
+    for (let i = 0; i < owner.length; i++) {
+      if (owner[i] !== this.shadowOwner[i] || trail[i] !== this.shadowTrail[i]) {
+        cells.push(i, owner[i], trail[i]);
+        this.shadowOwner[i] = owner[i];
+        this.shadowTrail[i] = trail[i];
+      }
+    }
+    this.gridLog.push({ from: this.loggedVersion, version: this.gridVersion, cells });
+    if (this.gridLog.length > GRID_LOG_LENGTH) this.gridLog.splice(0, this.gridLog.length - GRID_LOG_LENGTH);
+    this.loggedVersion = this.gridVersion;
   }
 
   // ---- internals ---------------------------------------------------------

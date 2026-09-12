@@ -1,41 +1,42 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Dir, Snapshot } from "@game/core";
-import { byCode, hydrate, patchFromRoom } from "./rooms";
+import { byCode, hydrate } from "./rooms";
 
-/** A `Snapshot` with the grid layers as `ArrayBuffer`s, Convex's wire type for bytes. */
-type WireSnapshot = Omit<Snapshot, "owner" | "trail"> & { owner?: ArrayBuffer; trail?: ArrayBuffer };
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
+/** The subscription payload: a `Snapshot` in "patches" mode, which never carries the byte layers. */
+type WireSnapshot = Omit<Snapshot, "owner" | "trail">;
 
 /**
  * The single subscription the client lives on. Convex re-runs this and pushes
  * the result to every connected client whenever any row it read changes.
- * The shape is `@core`'s `Snapshot`, unmodified except that the grid layers
- * cross the wire as `ArrayBuffer` (Convex's bytes type) instead of
- * `Uint8Array`; the client adapter converts them back.
+ * The shape is `@core`'s `Snapshot` in "patches" mode: players plus the
+ * room's recent grid change log, never the full 8 KB layers. A client that
+ * falls behind the log calls `grid` once to resync.
  */
 export const snapshot = query({
   args: { code: v.string() },
   handler: async (ctx, { code }): Promise<WireSnapshot | null> => {
     const doc = await byCode(ctx, code.toUpperCase());
     if (!doc) return null;
+    const { owner: _owner, trail: _trail, ...snap } = hydrate(doc).snapshot(Date.now(), "patches");
+    return snap;
+  },
+});
 
-    const snap = hydrate(doc).snapshot(Date.now(), true);
-    return {
-      ...snap,
-      owner: snap.owner ? toArrayBuffer(snap.owner) : undefined,
-      trail: snap.trail ? toArrayBuffer(snap.trail) : undefined,
-    };
+/** Full grid layers, fetched once on join and whenever a client misses patches. */
+export const grid = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const doc = await byCode(ctx, code.toUpperCase());
+    if (!doc) return null;
+    return { gridVersion: doc.gridVersion, owner: doc.owner, trail: doc.trail };
   },
 });
 
 /**
- * Records a player's intent. Direction changes are edge-triggered -- one
- * call per keypress, not per tick -- so hydrating/re-serializing the whole
- * room here is bounded by input rate, not tick rate.
+ * Records a player's intent. Only inserts a row into `inputs`; the tick
+ * applies it. Keeping this mutation off the room document means a keypress
+ * never conflicts with the tick's write, so neither one gets retried.
  */
 export const setDirection = mutation({
   args: { playerId: v.string(), dir: v.union(v.literal(0), v.literal(1), v.literal(2), v.literal(3)) },
@@ -45,12 +46,6 @@ export const setDirection = mutation({
       .withIndex("by_player", (q) => q.eq("playerId", playerId))
       .first();
     if (!link) return;
-
-    const doc = await byCode(ctx, link.code);
-    if (!doc) return;
-
-    const room = hydrate(doc);
-    room.setDirection(playerId, dir as Dir);
-    await ctx.db.patch(doc._id, patchFromRoom(room, doc.gridVersion));
+    await ctx.db.insert("inputs", { code: link.code, playerId, dir: dir as Dir, at: Date.now() });
   },
 });

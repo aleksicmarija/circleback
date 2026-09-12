@@ -1,4 +1,4 @@
-import type { Dir, PlayerId, Snapshot } from "@core";
+import type { Dir, GridState, PlayerId, Snapshot } from "@core";
 
 export type JoinResult = { code: string; playerId: PlayerId };
 
@@ -21,4 +21,6 @@ export interface Backend {
    * `null` means the room no longer exists.
    */
   watchRoom(code: string, onSnapshot: (snapshot: Snapshot | null) => void): () => void;
+  /** One-shot full grid, for when the client fell behind the snapshot patch log. */
+  fetchGrid(code: string): Promise<GridState | null>;
 }

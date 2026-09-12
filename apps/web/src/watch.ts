@@ -8,6 +8,7 @@ import { DEFAULT_ROOM_CODE, PLAYER_COLORS, BOT_SKINS, PET_SKINS, type Snapshot }
 import { createBackend } from "./backend";
 import * as scene from "./scene";
 import * as interpolate from "./interpolate";
+import { GridSync } from "./gridsync";
 
 const backend = createBackend();
 
@@ -50,6 +51,7 @@ function escapeHtml(text: string): string {
 
 let latest: Snapshot | null = null;
 let boardUpdatedAt = 0;
+const grid = new GridSync(() => backend.fetchGrid(code), scene.updateBoard);
 
 function updateBoard(snapshot: Snapshot): void {
   const total = snapshot.w * snapshot.h;
@@ -84,7 +86,7 @@ backend.watchRoom(code, (incoming) => {
   }
   setStatus(null);
   latest = incoming;
-  if (incoming.owner && incoming.trail) scene.updateBoard(incoming.owner, incoming.trail);
+  grid.apply(incoming);
   interpolate.record(incoming.players);
 
   const now = performance.now();

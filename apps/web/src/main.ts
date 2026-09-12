@@ -4,6 +4,7 @@ import * as ui from "./ui";
 import * as scene from "./scene";
 import * as audio from "./audio";
 import * as interpolate from "./interpolate";
+import { GridSync } from "./gridsync";
 import { onDirection } from "./input";
 
 const backend = createBackend();
@@ -13,6 +14,7 @@ type Session = { code: string; playerId: string };
 let session: Session | null = null;
 let latest: Snapshot | null = null;
 let unsubscribe: (() => void) | null = null;
+let grid: GridSync | null = null;
 let hudUpdatedAt = 0;
 
 const HUD_INTERVAL_MS = 200;
@@ -51,6 +53,7 @@ function connect(next: Session): void {
   disconnect();
   session = next;
   ui.showHud();
+  grid = new GridSync(() => backend.fetchGrid(next.code), scene.updateBoard);
 
   unsubscribe = backend.watchRoom(next.code, (incoming) => {
     if (!incoming) {
@@ -66,7 +69,7 @@ function connect(next: Session): void {
 
     react(latest, incoming, next.playerId);
     latest = incoming;
-    if (incoming.owner && incoming.trail) scene.updateBoard(incoming.owner, incoming.trail);
+    grid?.apply(incoming);
     interpolate.record(incoming.players);
 
     const now = performance.now();
@@ -82,6 +85,7 @@ function disconnect(): void {
   unsubscribe = null;
   session = null;
   latest = null;
+  grid = null;
   interpolate.reset();
   scene.clearPlayers();
 }

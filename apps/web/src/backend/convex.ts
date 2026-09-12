@@ -36,5 +36,10 @@ export function createConvexBackend(): Backend {
     setDirection: (playerId: PlayerId, dir: Dir) => void convex.mutation(api.game.setDirection, { playerId, dir }),
     watchRoom: (code, onSnapshot) =>
       convex.onUpdate(api.game.snapshot, { code }, (snap) => onSnapshot(toSnapshot(snap))),
+    fetchGrid: async (code) => {
+      const grid = await convex.query(api.game.grid, { code });
+      if (!grid) return null;
+      return { gridVersion: grid.gridVersion, owner: new Uint8Array(grid.owner), trail: new Uint8Array(grid.trail) };
+    },
   };
 }

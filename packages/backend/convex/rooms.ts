@@ -27,6 +27,7 @@ export function hydrate(doc: Doc<"rooms">): Room {
     nextBotName: doc.nextBotName,
     owner: new Uint8Array(doc.owner),
     trail: new Uint8Array(doc.trail),
+    gridLog: doc.gridLog,
     players: doc.players as PlayerState[],
   };
   return Room.hydrate(state, Math.random, makeId);
@@ -38,6 +39,7 @@ type RoomFields = {
   lastStepAt: number | null;
   nextId: number;
   nextBotName: number;
+  gridLog: RoomState["gridLog"];
   players: PlayerState[];
   owner: ArrayBuffer;
   trail: ArrayBuffer;
@@ -52,6 +54,7 @@ function fieldsForInsert(room: Room): RoomFields {
     lastStepAt: state.lastStepAt,
     nextId: state.nextId,
     nextBotName: state.nextBotName,
+    gridLog: state.gridLog,
     players: state.players,
     owner: toArrayBuffer(state.owner),
     trail: toArrayBuffer(state.trail),
@@ -67,6 +70,7 @@ export function patchFromRoom(room: Room, writtenGridVersion: number): Partial<R
     lastStepAt: state.lastStepAt,
     nextId: state.nextId,
     nextBotName: state.nextBotName,
+    gridLog: state.gridLog,
     players: state.players,
   };
   if (state.gridVersion !== writtenGridVersion) {

@@ -35,10 +35,23 @@ export type PlayerSnapshot = {
   killedBy: string | null;
 };
 
+/** Cells that changed between two grid versions, as flat triples: index, owner, trail. */
+export type GridPatch = { from: number; version: number; cells: number[] };
+
+/** A full copy of both grid layers at one version. */
+export type GridState = { gridVersion: number; owner: Uint8Array; trail: Uint8Array };
+
+/** What a snapshot carries about the grid: everything, or only recent changes. */
+export type GridMode = "full" | "patches";
+
 /**
- * One frame of authoritative state. The grid layers are only present when
- * they changed since the previous snapshot sent to the same subscriber, so
- * the client must keep the last ones it received.
+ * One frame of authoritative state.
+ *
+ * The grid travels one of two ways. A "full" snapshot carries both layers.
+ * A "patches" snapshot carries the room's recent change log instead, a few
+ * dozen bytes per tick rather than 8 KB: the client applies the patch whose
+ * `from` matches the version it holds and fetches the full grid only when it
+ * has fallen further behind than the log remembers.
  *
  * Grid encoding, both layers: 0 = nobody, otherwise slot + 1.
  */
@@ -52,5 +65,7 @@ export type Snapshot = {
   gridVersion: number;
   owner?: Uint8Array;
   trail?: Uint8Array;
+  /** Recent grid changes, oldest first. Present in "patches" mode. */
+  patches?: GridPatch[];
   players: PlayerSnapshot[];
 };
