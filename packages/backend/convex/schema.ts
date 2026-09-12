@@ -42,6 +42,9 @@ export default defineSchema({
         progress: v.number(),
         trailCells: v.array(v.number()),
         kills: v.number(),
+        // Territory size, refreshed by the tick whenever the grid changes, so
+        // the snapshot query can score without reading the grid row.
+        cells: v.number(),
         respawnAt: v.number(),
         killedBy: v.union(v.string(), v.null()),
         lastInputAt: v.number(),
