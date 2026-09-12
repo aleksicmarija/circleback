@@ -51,6 +51,8 @@ function escapeHtml(text: string): string {
 
 let latest: Snapshot | null = null;
 let boardUpdatedAt = 0;
+/** Board changes wait here until the interpolated pieces catch up (see main.ts). */
+let pendingBoard: { at: number; snapshot: Snapshot }[] = [];
 const grid = new GridSync(() => backend.fetchGrid(code), scene.updateBoard);
 
 function updateBoard(snapshot: Snapshot): void {
@@ -79,6 +81,7 @@ function setStatus(text: string | null): void {
 backend.watchRoom(code, (incoming) => {
   if (!incoming) {
     latest = null;
+    pendingBoard = [];
     interpolate.reset();
     scene.clearPlayers();
     setStatus(`Room ${code} is closed. Waiting for players…`);
@@ -86,8 +89,8 @@ backend.watchRoom(code, (incoming) => {
   }
   setStatus(null);
   latest = incoming;
-  grid.apply(incoming);
   interpolate.record(incoming.players);
+  pendingBoard.push({ at: performance.now(), snapshot: incoming });
 
   const now = performance.now();
   if (now - boardUpdatedAt > 250) {
@@ -97,7 +100,10 @@ backend.watchRoom(code, (incoming) => {
 });
 
 function frame(): void {
-  scene.syncPlayers(interpolate.sample(performance.now()), null);
+  const now = performance.now();
+  const due = now - interpolate.currentDelay();
+  while (pendingBoard.length > 0 && pendingBoard[0].at <= due) grid.apply(pendingBoard.shift()!.snapshot);
+  scene.syncPlayers(interpolate.sample(now), null);
   scene.render();
   requestAnimationFrame(frame);
 }

@@ -15,6 +15,13 @@ let session: Session | null = null;
 let latest: Snapshot | null = null;
 let unsubscribe: (() => void) | null = null;
 let grid: GridSync | null = null;
+/**
+ * Board changes and effects wait here until the interpolated pieces catch up.
+ * Players are drawn `interpolate.currentDelay()` behind the feed; painting
+ * the trail on arrival would put it a cell or two ahead of the pet drawing it.
+ */
+let pendingBoard: { at: number; snapshot: Snapshot }[] = [];
+let applied: Snapshot | null = null;
 let hudUpdatedAt = 0;
 
 const HUD_INTERVAL_MS = 200;
@@ -68,10 +75,9 @@ function connect(next: Session): void {
       return;
     }
 
-    react(latest, incoming, next.playerId);
     latest = incoming;
-    grid?.apply(incoming);
     interpolate.record(incoming.players);
+    pendingBoard.push({ at: performance.now(), snapshot: incoming });
 
     const now = performance.now();
     if (now - hudUpdatedAt > HUD_INTERVAL_MS) {
@@ -87,8 +93,21 @@ function disconnect(): void {
   session = null;
   latest = null;
   grid = null;
+  pendingBoard = [];
+  applied = null;
   interpolate.reset();
   scene.clearPlayers();
+}
+
+/** Paints board changes and fires effects for every snapshot the render time has reached. */
+function applyDueBoard(now: number): void {
+  const due = now - interpolate.currentDelay();
+  while (pendingBoard.length > 0 && pendingBoard[0].at <= due) {
+    const { snapshot } = pendingBoard.shift()!;
+    if (session) react(applied, snapshot, session.playerId);
+    grid?.apply(snapshot);
+    applied = snapshot;
+  }
 }
 
 onDirection((dir) => {
@@ -98,6 +117,7 @@ onDirection((dir) => {
 
 function frame(): void {
   const now = performance.now();
+  applyDueBoard(now);
   scene.syncPlayers(interpolate.sample(now), session?.playerId ?? null);
   if (session && latest) ui.updateOverlay(latest, session.playerId);
   scene.render();
