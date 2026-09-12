@@ -1,47 +1,72 @@
-import { INTERP_DELAY_MS, type PlayerSnapshot } from "@core";
+import { INTERP_DELAY_MS, TICK_MS, type PlayerSnapshot } from "@core";
 
+/** A snapshot, kept on the server's clock rather than the moment it reached us. */
 type Frame = { at: number; players: PlayerSnapshot[] };
 
 const MAX_FRAMES = 8;
 /** A jump longer than this between frames is a respawn, not movement. */
 const TELEPORT_CELLS = 3;
 
-/** Adaptive delay: track how evenly snapshots arrive and stay just behind the worst gaps. */
-const INTERVAL_SAMPLES = 40;
+/** Delay tracking: how much later than best-case each snapshot arrived. */
+const JITTER_SAMPLES = 40;
 const MIN_SAMPLES = 8;
-const DELAY_MARGIN_MS = 40;
+const DELAY_MARGIN_MS = 30;
 const MIN_DELAY_MS = 90;
 const MAX_DELAY_MS = 400;
 const DELAY_EASING = 0.1;
+/** How quickly the clock offset follows genuine drift once a best case is known. */
+const OFFSET_DRIFT = 0.002;
 
 const frames: Frame[] = [];
-const intervals: number[] = [];
-let lastArrivalAt = 0;
+const jitters: number[] = [];
+/** localClock - serverClock, estimated from the least-delayed snapshot seen. */
+let offset = 0;
+let haveOffset = false;
 let delayMs = INTERP_DELAY_MS;
 
-/** Called once per server snapshot, stamped with local arrival time. */
-export function record(players: PlayerSnapshot[]): void {
-  const now = performance.now();
-  frames.push({ at: now, players });
-  if (frames.length > MAX_FRAMES) frames.shift();
+/**
+ * Records a snapshot against the server clock it was taken on.
+ *
+ * Timing frames by arrival instead would turn network and scheduler jitter
+ * straight into speed changes: two snapshots holding one tick of motion that
+ * arrive 60ms apart would be played half as fast again as two that arrive
+ * 150ms apart. The server advances positions by real elapsed time, so its own
+ * timestamps are the even timeline, and jitter belongs in the delay buffer.
+ */
+export function record(serverAt: number, players: PlayerSnapshot[]): void {
+  const observed = performance.now() - serverAt;
 
-  if (lastArrivalAt > 0) {
-    intervals.push(now - lastArrivalAt);
-    if (intervals.length > INTERVAL_SAMPLES) intervals.shift();
-    if (intervals.length >= MIN_SAMPLES) {
-      const sorted = [...intervals].sort((a, b) => a - b);
-      const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))];
-      const target = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p95 + DELAY_MARGIN_MS));
-      delayMs += (target - delayMs) * DELAY_EASING;
-    }
+  if (!haveOffset) {
+    offset = observed;
+    haveOffset = true;
+  } else if (observed < offset) {
+    // A faster trip than anything seen so far is the truer offset.
+    offset = observed;
+  } else {
+    offset += (observed - offset) * OFFSET_DRIFT;
   }
-  lastArrivalAt = now;
+
+  jitters.push(observed - offset);
+  if (jitters.length > JITTER_SAMPLES) jitters.shift();
+  if (jitters.length >= MIN_SAMPLES) {
+    const sorted = [...jitters].sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))];
+    // One tick of buffer so a newer frame always exists, plus the jitter to absorb.
+    const target = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p95 + TICK_MS + DELAY_MARGIN_MS));
+    delayMs += (target - delayMs) * DELAY_EASING;
+  }
+
+  const newest = frames[frames.length - 1];
+  if (newest && serverAt <= newest.at) return; // stale or duplicate delivery
+  frames.push({ at: serverAt, players });
+  if (frames.length > MAX_FRAMES) frames.shift();
 }
 
 export function reset(): void {
   frames.length = 0;
-  intervals.length = 0;
-  lastArrivalAt = 0;
+  jitters.length = 0;
+  offset = 0;
+  haveOffset = false;
   delayMs = INTERP_DELAY_MS;
 }
 
@@ -51,13 +76,22 @@ export function currentDelay(): number {
 }
 
 /**
- * Renders `currentDelay()` behind the newest snapshot, so there are always
- * two snapshots to blend between. This turns the server tick into smooth motion.
+ * The instant on the server's clock that the scene is currently showing.
+ * Anything keyed to a snapshot (board paint, effects) must use this, or it
+ * will run ahead of the pieces.
  */
-export function sample(now: number): PlayerSnapshot[] {
+export function renderTime(nowLocal: number): number {
+  return nowLocal - offset - delayMs;
+}
+
+/**
+ * Renders `currentDelay()` behind the feed, blending the two snapshots that
+ * bracket that instant. This turns the server tick into smooth motion.
+ */
+export function sample(nowLocal: number): PlayerSnapshot[] {
   if (frames.length === 0) return [];
 
-  const target = now - delayMs;
+  const target = renderTime(nowLocal);
   let older: Frame | undefined;
   let newer: Frame | undefined;
 
