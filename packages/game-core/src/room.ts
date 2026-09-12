@@ -328,7 +328,13 @@ export class Room {
     return {
       code: this.code,
       tick: this.tick,
-      at: now,
+      // The instant these positions are for, not the instant the snapshot was
+      // built. `step` advances every piece by exactly `now - lastStepAt`, so
+      // this timeline and the positions on it can never disagree. Using the
+      // build time instead would fold however long the host took to answer
+      // into the gap between frames, and a client blending on it would
+      // speed up and slow down for reasons that are not movement.
+      at: this.lastStepAt ?? now,
       w: this.grid.w,
       h: this.grid.h,
       gridVersion: this.gridVersion,

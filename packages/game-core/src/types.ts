@@ -85,7 +85,7 @@ export type GridMode = "full" | "patches";
 export type Snapshot = {
   code: string;
   tick: number;
-  /** Server clock (ms) when the snapshot was taken. */
+  /** Server clock (ms) the positions below are for; see `Room.snapshot`. */
   at: number;
   w: number;
   h: number;
