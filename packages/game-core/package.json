@@ -1,0 +1,7 @@
+{
+  "name": "@game/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Pure game rules for Circleback. No DOM, no rendering, no transport."
+}

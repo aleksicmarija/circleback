@@ -1,13 +1,15 @@
-import { INTERP_DELAY_MS } from "@backend/constants";
-import type { PlayerView } from "./net";
+import { INTERP_DELAY_MS, type PlayerSnapshot } from "@core";
 
-type Frame = { at: number; players: PlayerView[] };
+type Frame = { at: number; players: PlayerSnapshot[] };
 
 const MAX_FRAMES = 8;
+/** A jump longer than this between frames is a respawn, not movement. */
+const TELEPORT_CELLS = 3;
+
 const frames: Frame[] = [];
 
 /** Called once per server snapshot, stamped with local arrival time. */
-export function record(players: PlayerView[]): void {
+export function record(players: PlayerSnapshot[]): void {
   frames.push({ at: performance.now(), players });
   if (frames.length > MAX_FRAMES) frames.shift();
 }
@@ -16,20 +18,11 @@ export function reset(): void {
   frames.length = 0;
 }
 
-function shortestTurn(from: number, to: number): number {
-  const full = Math.PI * 2;
-  let delta = (to - from) % full;
-  if (delta > Math.PI) delta -= full;
-  if (delta < -Math.PI) delta += full;
-  return delta;
-}
-
 /**
  * Renders INTERP_DELAY_MS behind the newest snapshot, so there are always two
- * snapshots to blend between. This is what turns a 10Hz server tick into
- * smooth 60fps motion.
+ * snapshots to blend between. This turns the server tick into smooth motion.
  */
-export function sample(now: number): PlayerView[] {
+export function sample(now: number): PlayerSnapshot[] {
   if (frames.length === 0) return [];
 
   const target = now - INTERP_DELAY_MS;
@@ -55,13 +48,14 @@ export function sample(now: number): PlayerView[] {
 
   return newer.players.map((player) => {
     const before = previous.get(player.id);
-    // A player who joined between the two frames has nothing to blend from.
-    if (!before) return player;
+    if (!before || !before.alive || !player.alive) return player;
+    if (Math.abs(player.x - before.x) > TELEPORT_CELLS || Math.abs(player.z - before.z) > TELEPORT_CELLS) {
+      return player;
+    }
     return {
       ...player,
       x: before.x + (player.x - before.x) * t,
       z: before.z + (player.z - before.z) * t,
-      yaw: before.yaw + shortestTurn(before.yaw, player.yaw) * t,
     };
   });
 }

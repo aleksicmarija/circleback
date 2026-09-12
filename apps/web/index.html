@@ -2,13 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>Circleback</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <canvas id="stage"></canvas>
-    <div id="hud"></div>
+
+    <div id="menu" hidden></div>
+
+    <div id="hud" hidden>
+      <div id="top-left">
+        <div id="room-info"></div>
+        <button id="leave" class="secondary">Leave</button>
+      </div>
+      <ol id="leaderboard"></ol>
+      <div id="score"></div>
+      <div id="overlay" hidden></div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

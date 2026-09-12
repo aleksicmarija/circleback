@@ -13,6 +13,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // Cross-package imports. Mirrored in apps/web/vite.config.ts.
+    "paths": {
+      "@core": ["./packages/game-core/src/index.ts"],
+      "@server/*": ["./packages/local-server/src/*"],
+      "@backend/*": ["./packages/backend/convex/*"]
+    }
   }
 }

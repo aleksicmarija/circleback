@@ -11,12 +11,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n convex,web -c cyan,magenta \"npm:dev:convex\" \"npm:dev:web\"",
+    "dev": "npm run dev -w apps/web",
     "dev:convex": "convex dev",
-    "dev:web": "npm run dev -w apps/web",
+    "dev:all": "concurrently -n convex,web -c cyan,magenta \"npm:dev:convex\" \"npm:dev\"",
     "build": "npm run build -w apps/web",
-    "typecheck": "tsc -p apps/web --noEmit && tsc -p packages/backend/convex --noEmit",
-    "deploy": "convex deploy --cmd 'npm run build -w apps/web'",
+    "typecheck": "tsc -p packages/game-core --noEmit && tsc -p packages/local-server --noEmit && tsc -p apps/web --noEmit && tsc -p packages/backend/convex --noEmit",
+    "deploy": "convex deploy --cmd \"npm run build -w apps/web\"",
     "codegen": "convex codegen"
   },
   "devDependencies": {

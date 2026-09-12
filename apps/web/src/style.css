@@ -1,33 +1,65 @@
 :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #0b0f14; color: #e6edf3; overflow: hidden; }
+body { margin: 0; background: #07090d; color: #e6edf3; overflow: hidden; touch-action: none; }
 #stage { display: block; width: 100vw; height: 100vh; }
+[hidden] { display: none !important; }
 
-#hud {
-  position: fixed; inset: 0; pointer-events: none;
-  padding: 16px; display: flex; flex-direction: column; gap: 12px;
+/* ---- menu ---- */
+#menu {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(7, 9, 13, 0.55);
 }
-#hud .panel {
-  pointer-events: auto; align-self: flex-start;
-  background: rgba(13, 19, 27, 0.88); border: 1px solid #26303c;
-  border-radius: 10px; padding: 16px; min-width: 260px; max-width: 90vw;
+.panel {
+  background: rgba(13, 19, 27, 0.94); border: 1px solid #26303c;
+  border-radius: 12px; padding: 22px 24px; width: min(340px, 92vw);
 }
-#hud h1 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0.02em; }
-#hud label { display: block; font-size: 12px; color: #8b98a5; margin: 10px 0 4px; }
-#hud input {
-  width: 100%; padding: 8px 10px; border-radius: 6px;
+.panel h1 { margin: 0; font-size: 26px; letter-spacing: 0.02em; }
+.panel .tagline { margin: 4px 0 14px; font-size: 13px; color: #8b98a5; }
+.panel label { display: block; font-size: 12px; color: #8b98a5; margin: 10px 0 4px; }
+.panel input {
+  width: 100%; padding: 9px 10px; border-radius: 6px;
   border: 1px solid #26303c; background: #0b0f14; color: inherit; font: inherit;
 }
-#hud button {
-  margin-top: 12px; margin-right: 8px; padding: 8px 14px; border-radius: 6px;
+.panel details { margin-top: 14px; font-size: 13px; color: #8b98a5; }
+.panel summary { cursor: pointer; }
+.panel .hint { font-size: 12px; color: #8b98a5; margin: 14px 0 0; }
+.panel .error { color: #ff7b72; font-size: 12px; margin: 10px 0 0; }
+
+button {
+  margin-top: 12px; margin-right: 8px; padding: 9px 16px; border-radius: 6px;
   border: 1px solid #2f6feb; background: #2f6feb; color: white;
-  font: inherit; cursor: pointer;
+  font: inherit; font-weight: 600; cursor: pointer;
 }
-#hud button.secondary { background: transparent; border-color: #26303c; color: #e6edf3; }
-#hud button:disabled { opacity: 0.5; cursor: default; }
-#hud .code { font-size: 28px; letter-spacing: 0.18em; font-weight: 600; }
-#hud .players { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
-#hud .players li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-#hud .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-#hud .hint { font-size: 12px; color: #8b98a5; margin-top: 10px; }
-#hud .error { color: #ff7b72; font-size: 12px; margin-top: 10px; }
+#play { width: 100%; margin-right: 0; padding: 11px; font-size: 15px; }
+button.secondary { background: rgba(13, 19, 27, 0.8); border-color: #26303c; color: #e6edf3; font-weight: 500; }
+
+/* ---- in-game HUD ---- */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#hud > * { position: absolute; }
+
+#top-left { top: 14px; left: 14px; font-size: 13px; color: #8b98a5; }
+#top-left button { pointer-events: auto; margin-top: 8px; padding: 6px 12px; font-size: 12px; }
+
+#leaderboard {
+  top: 14px; right: 14px; margin: 0; padding: 10px 12px; list-style: none;
+  background: rgba(13, 19, 27, 0.78); border: 1px solid #26303c; border-radius: 10px;
+  min-width: 170px; font-size: 13px;
+}
+#leaderboard li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+#leaderboard li.me { font-weight: 700; }
+#leaderboard li.dead { opacity: 0.45; }
+#leaderboard .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#leaderboard .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#leaderboard .pct { font-variant-numeric: tabular-nums; color: #b7c2cc; }
+
+#score {
+  left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 2px;
+  font-size: 13px; color: #b7c2cc;
+}
+#score .big { font-size: 30px; font-weight: 700; color: #e6edf3; font-variant-numeric: tabular-nums; }
+
+#overlay {
+  left: 50%; top: 42%; transform: translate(-50%, -50%);
+  text-align: center; white-space: pre-line; font-size: 22px; font-weight: 600;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}

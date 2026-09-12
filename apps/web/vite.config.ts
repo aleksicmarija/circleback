@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 const here = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  // `npx convex dev` writes VITE_CONVEX_URL into .env.local at the REPO ROOT,
-  // not inside this app, so point Vite there.
+  // .env.local lives at the REPO ROOT (npx convex dev writes it there).
   envDir: resolve(here, "../.."),
   resolve: {
+    // Keep in sync with "paths" in tsconfig.base.json.
     alias: {
+      "@core": resolve(here, "../../packages/game-core/src/index.ts"),
+      "@server": resolve(here, "../../packages/local-server/src"),
       "@backend": resolve(here, "../../packages/backend/convex"),
     },
   },
