@@ -1,6 +1,15 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+/** Mirrors `BotMode` in @game/core. */
+export const botMode = v.union(v.literal("expand"), v.literal("raid"), v.literal("hunt"), v.literal("defend"));
+
+/** Mirrors `BotPlan` in @game/core: a strategy from the brain, valid until `until`. */
+export const botPlan = v.object({ mode: botMode, target: v.union(v.string(), v.null()), until: v.number() });
+
+/** Mirrors `BotPersona` in @game/core. */
+export const botPersona = v.object({ blurb: v.string(), voice: v.string(), source: v.union(v.string(), v.null()) });
+
 // One document per room holds the room state as flat top-level fields. The
 // two grid layers live in `grids`, a separate document per room, so that the
 // snapshot query, which re-runs on every tick, never reads 8 KB of bytes it
@@ -14,6 +23,8 @@ export default defineSchema({
     // Last spectator heartbeat (see game.watch). Bots keep playing for a
     // watched room even when no human is in it.
     lastWatchedAt: v.optional(v.number()),
+    // When the tick last asked the brain (brains.think) for the bots' plans.
+    brainAt: v.optional(v.number()),
 
     tick: v.number(),
     gridVersion: v.number(),
@@ -55,6 +66,11 @@ export default defineSchema({
             homeX: v.number(),
             homeZ: v.number(),
             turnBias: v.number(),
+            // Optional because rooms written before the brain existed lack
+            // them; `normalizePlayers` fills the defaults on load.
+            plan: v.optional(v.union(v.null(), botPlan)),
+            persona: v.optional(v.union(v.null(), botPersona)),
+            summoned: v.optional(v.boolean()),
           }),
         ),
       }),
@@ -85,5 +101,48 @@ export default defineSchema({
     playerId: v.string(),
     dir: v.number(),
     at: v.number(),
+  }).index("by_code", ["code"]),
+
+  // Work for the tick that would otherwise contend with it: the brain's
+  // answers (brains.think) and rivals ready to spawn (summon.stage). Drained
+  // like `inputs`, so nothing but the tick ever writes a room document.
+  botCommands: defineTable({
+    code: v.string(),
+    at: v.number(),
+    moves: v.array(
+      v.object({
+        id: v.string(),
+        mode: botMode,
+        target: v.union(v.string(), v.null()),
+        say: v.union(v.string(), v.null()),
+      }),
+    ),
+    spawns: v.optional(
+      v.array(v.object({ summonId: v.id("summons"), name: v.string(), persona: botPersona })),
+    ),
+  }).index("by_code", ["code"]),
+
+  // A request to bring a rival bot into a room from a web page (Firecrawl
+  // scrapes it, OpenAI writes the persona) or from an email. Clients
+  // subscribe to a row to follow it from "queued" to "joined".
+  summons: defineTable({
+    code: v.string(),
+    // A URL, or free text describing the rival.
+    source: v.string(),
+    via: v.union(v.literal("web"), v.literal("email")),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("scraping"),
+      v.literal("thinking"),
+      v.literal("joined"),
+      v.literal("failed"),
+    ),
+    // Page title while in flight, the bot's blurb once joined, the reason when failed.
+    detail: v.optional(v.string()),
+    botName: v.optional(v.string()),
+    playerId: v.optional(v.string()),
+    createdAt: v.number(),
+    // Where to answer when the request came in by email.
+    reply: v.optional(v.object({ inboxId: v.string(), messageId: v.string(), from: v.string() })),
   }).index("by_code", ["code"]),
 });

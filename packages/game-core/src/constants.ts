@@ -131,3 +131,33 @@ export const BOT_NAMES = [
   "Nova", "Pixel", "Zed", "Byte", "Comet", "Blip",
   "Rook", "Tango", "Juno", "Vex", "Kilo", "Echo",
 ] as const;
+
+/** One voice per house bot, same order as BOT_NAMES; the brain writes their lines in it. */
+export const HOUSE_BOT_VOICES = [
+  "dramatic starship captain, speaks in mission log entries",
+  "chirpy retro arcade cabinet, loves high scores and bleeps",
+  "deadpan minimalist, five words or fewer",
+  "nervous accountant, counts cells out loud",
+  "over-caffeinated sports commentator",
+  "sleepy robot who keeps almost dozing off",
+  "chess grandmaster, calls every move a gambit",
+  "smooth lounge singer, everything is a ballad",
+  "conspiracy theorist, the pets are up to something",
+  "grumpy old machine, back in my day",
+  "motivational fitness coach, one more lap",
+  "polite butler who apologises while attacking",
+] as const;
+
+/**
+ * The brain. A host asks an external brain (an LLM) for a plan per bot at
+ * most this often per active room; a plan expires after PLAN_TTL_MS so a
+ * brain that stops answering leaves bots on their own heuristics, not stuck.
+ */
+export const BRAIN_INTERVAL_MS = 7_000;
+export const PLAN_TTL_MS = 20_000;
+
+/** Summoned rivals per room, on top of the house bots. */
+export const MAX_SUMMONED_BOTS = 6;
+
+/** Longest line a brain may put above a bot's head. */
+export const MAX_STATUS_LENGTH = 48;

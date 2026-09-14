@@ -2,7 +2,7 @@ import type { Backend } from "./types";
 import { createLocalBackend } from "./local";
 import { createConvexBackend } from "./convex";
 
-export type { Backend, JoinResult } from "./types";
+export type { Backend, JoinResult, SummonApi, SummonCapabilities, SummonStatus } from "./types";
 
 /** Picks the backend from VITE_BACKEND. Defaults to the in-browser simulation. */
 export function createBackend(): Backend {

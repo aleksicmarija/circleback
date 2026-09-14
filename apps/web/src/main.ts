@@ -6,6 +6,7 @@ import * as audio from "./audio";
 import * as interpolate from "./interpolate";
 import { GridSync } from "./gridsync";
 import { onDirection } from "./input";
+import * as summon from "./summon";
 
 const backend = createBackend();
 
@@ -91,6 +92,7 @@ function disconnect(): void {
   unsubscribe?.();
   unsubscribe = null;
   session = null;
+  summon.reset();
   latest = null;
   grid = null;
   pendingBoard = [];
@@ -155,6 +157,7 @@ window.addEventListener("pagehide", () => {
   if (session) void backend.leaveRoom(session.playerId);
 });
 
+summon.mount(backend.summon, () => session?.code ?? null);
 scene.preload([...PET_SKINS, ...BOT_SKINS]);
 ui.showMenu();
 requestAnimationFrame(frame);

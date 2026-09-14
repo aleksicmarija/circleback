@@ -1,13 +1,16 @@
 import {
   GRID_W, GRID_H, PLAYER_SPEED, RESPAWN_MS, SPAWN_RADIUS,
-  MAX_PLAYERS, MIN_PIECES, BOT_NAMES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, GRID_LOG_MAX_BYTES, MAX_PATCH_CELLS, IDLE_KICK_MS,
+  MAX_PLAYERS, MIN_PIECES, BOT_NAMES, HOUSE_BOT_VOICES, BOT_SKINS, PET_SKINS, GRID_LOG_LENGTH, GRID_LOG_MAX_BYTES, MAX_PATCH_CELLS, IDLE_KICK_MS,
 } from "./constants";
 import { Grid } from "./grid";
 import {
   DIR_DX, DIR_DZ, PATCH_STRIDE, opposite, turnLeft, turnRight, writePatchCell,
   type Dir, type GridMode, type GridPatch, type GridState, type PlayerId, type PlayerSnapshot, type Snapshot,
 } from "./types";
-import { createBotState, decideBot, pickTargetTrail, type BotState } from "./bots";
+import {
+  createBotState, decideBot, describeBot, pickTargetTrail, planTargetTrail,
+  type BotPersona, type BotPlan, type BotState,
+} from "./bots";
 
 export type Player = {
   id: PlayerId;
@@ -36,15 +39,6 @@ export type Player = {
   lastInputAt: number;
   bot: BotState | null;
 };
-
-/** What a heuristic bot is up to, for the label above its head. */
-function botStatus(p: Player): string {
-  if (!p.alive) return "rebooting";
-  if (!p.bot) return "";
-  if (p.trailCells.length >= p.bot.targetTrail) return "heading home";
-  if (p.trailCells.length > 0) return "raiding";
-  return "patrolling";
-}
 
 export class RoomFullError extends Error {
   constructor() {
@@ -176,7 +170,13 @@ export class Room {
    * has MIN_PIECES pieces takes the seat of the weakest bot while one is
    * left; after that humans keep joining until the colours run out.
    */
-  addPlayer(name: string, isBot: boolean, now: number, skin?: string): Player {
+  addPlayer(
+    name: string,
+    isBot: boolean,
+    now: number,
+    skin?: string,
+    botInit: { persona: BotPersona | null; summoned: boolean } = { persona: null, summoned: false },
+  ): Player {
     if (!isBot && this.players.size >= MIN_PIECES) {
       const bot = this.weakestBot();
       if (bot) this.removePlayer(bot.id);
@@ -203,7 +203,7 @@ export class Room {
       respawnAt: now,
       killedBy: null,
       lastInputAt: now,
-      bot: isBot ? createBotState(this.random) : null,
+      bot: isBot ? createBotState(this.random, botInit.persona, botInit.summoned) : null,
     };
     this.players.set(player.id, player);
     this.bySlot[slot] = player;
@@ -221,15 +221,33 @@ export class Room {
     this.flushGridLog();
   }
 
-  /** Adds bots until the board has MIN_PIECES pieces. */
+  /** Adds house bots until the board has MIN_PIECES pieces. */
   ensureBots(now: number): void {
     while (this.players.size < MIN_PIECES) {
-      const name = BOT_NAMES[this.nextBotName++ % BOT_NAMES.length];
-      this.addPlayer(name, true, now);
+      const i = this.nextBotName++ % BOT_NAMES.length;
+      this.addBot(BOT_NAMES[i], now, { blurb: HOUSE_BOT_VOICES[i], voice: HOUSE_BOT_VOICES[i], source: null }, false);
     }
   }
 
-  /** The bot whose removal disturbs the board least: a dead one, else the one holding the least land. */
+  /**
+   * Adds a bot on top of whatever is on the board. Summoned rivals keep
+   * their seat when humans arrive for as long as any house bot is left.
+   */
+  addBot(name: string, now: number, persona: BotPersona | null, summoned: boolean): Player {
+    return this.addPlayer(name, true, now, undefined, { persona, summoned });
+  }
+
+  /** How many summoned rivals are on the board. */
+  get summonedCount(): number {
+    let n = 0;
+    for (const p of this.players.values()) if (p.bot?.summoned) n++;
+    return n;
+  }
+
+  /**
+   * The bot whose removal disturbs the board least: a house bot before a
+   * summoned one, a dead one before a live one, then the least land.
+   */
   private weakestBot(): Player | null {
     if (this.countedVersion !== this.gridVersion) {
       this.grid.count(this.counts);
@@ -239,7 +257,7 @@ export class Room {
     let weakestScore = Infinity;
     for (const p of this.players.values()) {
       if (!p.isBot) continue;
-      const score = p.alive ? this.counts[p.slot + 1] : -1;
+      const score = (p.alive ? this.counts[p.slot + 1] : -1) + (p.bot?.summoned ? this.grid.owner.length : 0);
       if (score < weakestScore) {
         weakestScore = score;
         weakest = p;
@@ -252,6 +270,20 @@ export class Room {
   setStatus(id: PlayerId, status: string | null): void {
     const player = this.players.get(id);
     if (player) player.status = status;
+  }
+
+  /**
+   * Hands a bot a strategy from an external brain (see `BotPlan`), with an
+   * optional line to show above its head for as long as the plan lasts.
+   * Ignored for humans and for targets that are not in the room.
+   */
+  setPlan(id: PlayerId, plan: BotPlan | null, say: string | null = null): void {
+    const player = this.players.get(id);
+    if (!player?.bot) return;
+    if (plan && plan.target !== null && !this.players.has(plan.target)) plan = { ...plan, target: null };
+    player.bot.plan = plan;
+    if (plan) player.bot.targetTrail = planTargetTrail(plan.mode, player.bot.targetTrail);
+    player.status = say;
   }
 
   /**
@@ -300,6 +332,12 @@ export class Room {
     const kicked: PlayerId[] = [];
     for (const player of this.players.values()) {
       if (!player.isBot && now - player.lastInputAt > IDLE_KICK_MS) kicked.push(player.id);
+      // A plan outlives the brain call that made it by a bounded time, and
+      // its line above the bot's head goes with it.
+      if (player.bot?.plan && now > player.bot.plan.until) {
+        player.bot.plan = null;
+        player.status = null;
+      }
     }
     for (const id of kicked) this.removePlayer(id);
 
@@ -326,7 +364,7 @@ export class Room {
         slot: p.slot,
         isBot: p.isBot,
         skin: p.skin,
-        status: p.status ?? (p.bot ? botStatus(p) : undefined),
+        status: p.status ?? (p.bot ? describeBot(this, p) : undefined),
         alive: p.alive,
         x: p.cx + 0.5 + DIR_DX[p.dir] * p.progress,
         z: p.cz + 0.5 + DIR_DZ[p.dir] * p.progress,

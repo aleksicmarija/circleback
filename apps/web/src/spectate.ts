@@ -78,6 +78,39 @@ function setStatus(text: string | null): void {
   status.textContent = text ?? "";
 }
 
+// How to summon a rival, and who arrived lately. Only when the backend can summon.
+if (backend.summon) {
+  const card = document.getElementById("summon-card") as HTMLElement;
+  const how = document.getElementById("summon-how") as HTMLParagraphElement;
+  const mail = document.getElementById("summon-mail") as HTMLParagraphElement;
+  const inbox = document.getElementById("summon-inbox") as HTMLSpanElement;
+  const feed = document.getElementById("summon-feed") as HTMLOListElement;
+  card.hidden = false;
+
+  backend.summon.capabilities((caps) => {
+    how.textContent = caps.links
+      ? "Paste any link in the game and a robot written from that page joins this arena."
+      : "Describe a rival in the game and a robot written from your words joins this arena.";
+    mail.hidden = !caps.email;
+    inbox.textContent = caps.email ?? "";
+  });
+
+  const shorten = (text: string) => {
+    const bare = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+    return bare.length > 34 ? `${bare.slice(0, 33)}…` : bare;
+  };
+  backend.summon.recent(code, (rows) => {
+    feed.innerHTML = rows
+      .map((r) => {
+        const from = `<span class="from">${r.via === "email" ? "📧" : "🔗"} ${escapeHtml(shorten(r.source))}</span>`;
+        if (r.status === "joined") return `<li>🤖 ${escapeHtml(r.botName ?? "A rival")} arrived ${from}</li>`;
+        if (r.status === "failed") return `<li class="failed">Could not summon ${from}</li>`;
+        return `<li>⏳ Summoning ${from}</li>`;
+      })
+      .join("");
+  });
+}
+
 backend.watchRoom(code, (incoming) => {
   if (!incoming) {
     latest = null;

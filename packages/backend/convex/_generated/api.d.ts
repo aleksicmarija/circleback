@@ -8,8 +8,12 @@
  * @module
  */
 
+import type * as brains from "../brains.js";
+import type * as email from "../email.js";
 import type * as game from "../game.js";
+import type * as http from "../http.js";
 import type * as rooms from "../rooms.js";
+import type * as summon from "../summon.js";
 import type * as tick from "../tick.js";
 
 import type {
@@ -19,8 +23,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  brains: typeof brains;
+  email: typeof email;
   game: typeof game;
+  http: typeof http;
   rooms: typeof rooms;
+  summon: typeof summon;
   tick: typeof tick;
 }>;
 
@@ -52,4 +60,6 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
+  firecrawl: import("@firecrawl/firecrawl-convex/_generated/component.js").ComponentApi<"firecrawl">;
+  agentmail: import("@agentmail/convex/_generated/component.js").ComponentApi<"agentmail">;
 };

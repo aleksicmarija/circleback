@@ -1,7 +1,8 @@
 import { ConvexClient } from "convex/browser";
 import { api } from "@backend/_generated/api";
 import { WATCH_HEARTBEAT_MS, type Dir, type PlayerId, type Snapshot } from "@core";
-import type { Backend } from "./types";
+import type { Backend, SummonApi } from "./types";
+import type { Id } from "@backend/_generated/dataModel";
 
 /** Convex's wire type for every byte array is ArrayBuffer; `@core` wants Uint8Array. */
 type WireSnapshot = Omit<Snapshot, "owner" | "trail" | "patches"> & {
@@ -63,5 +64,17 @@ export function createConvexBackend(): Backend {
       if (!grid) return null;
       return { gridVersion: grid.gridVersion, owner: new Uint8Array(grid.owner), trail: new Uint8Array(grid.trail) };
     },
+    summon: createSummonApi(convex),
+  };
+}
+
+/** Summoning rivals lives entirely in the backend; the client only follows rows. */
+function createSummonApi(convex: ConvexClient): SummonApi {
+  return {
+    request: (code, source) => convex.mutation(api.summon.request, { code, source }),
+    watch: (summonId, onChange) =>
+      convex.onUpdate(api.summon.status, { summonId: summonId as Id<"summons"> }, onChange),
+    recent: (code, onChange) => convex.onUpdate(api.summon.recent, { code }, onChange),
+    capabilities: (onChange) => convex.onUpdate(api.summon.capabilities, {}, onChange),
   };
 }

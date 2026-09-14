@@ -1,7 +1,10 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, env } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { AUDIENCE_TICK_MS, IDLE_POLL_MS, ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS, type Dir } from "@game/core";
+import {
+  AUDIENCE_TICK_MS, BRAIN_INTERVAL_MS, IDLE_POLL_MS, MAX_SUMMONED_BOTS, PLAN_TTL_MS, ROOM_IDLE_MS, TICK_MS, WATCH_TTL_MS,
+  type Dir, type Room,
+} from "@game/core";
 import { byCode, gridByCode, hydrate, persist } from "./rooms";
 import type { MutationCtx } from "./_generated/server";
 
@@ -15,6 +18,36 @@ async function drainInputs(ctx: MutationCtx, code: string, apply: (playerId: str
   for (const input of pending) {
     apply(input.playerId, input.dir as Dir, input.at);
     await ctx.db.delete(input._id);
+  }
+}
+
+/**
+ * Hands the brain's queued plans to the bots, spawns rivals that finished
+ * summoning, and clears the queue, oldest first. Spawning here, rather than
+ * in the summon pipeline, keeps every write to the room document in the tick.
+ */
+async function drainBotCommands(ctx: MutationCtx, code: string, room: Room, now: number): Promise<void> {
+  const pending = await ctx.db
+    .query("botCommands")
+    .withIndex("by_code", (q) => q.eq("code", code))
+    .collect();
+  pending.sort((a, b) => a.at - b.at || a._creationTime - b._creationTime);
+  for (const batch of pending) {
+    for (const move of batch.moves) {
+      room.setPlan(move.id, { mode: move.mode, target: move.target, until: now + PLAN_TTL_MS }, move.say);
+    }
+    for (const spawn of batch.spawns ?? []) {
+      const summon = await ctx.db.get(spawn.summonId);
+      if (!summon) continue;
+      if (room.summonedCount >= MAX_SUMMONED_BOTS) {
+        await ctx.db.patch(spawn.summonId, { status: "failed", detail: "The arena filled up with rivals first." });
+      } else {
+        const player = room.addBot(spawn.name, now, spawn.persona, true);
+        await ctx.db.patch(spawn.summonId, { status: "joined", detail: spawn.persona.blurb, botName: player.name, playerId: player.id });
+      }
+      if (summon.reply) await ctx.scheduler.runAfter(0, internal.email.answer, { summonId: spawn.summonId });
+    }
+    await ctx.db.delete(batch._id);
   }
 }
 
@@ -67,9 +100,19 @@ export const tick = internalMutation({
 
     room.ensureBots(now);
     await drainInputs(ctx, code, (playerId, dir, at) => room.setDirection(playerId, dir, at));
+    await drainBotCommands(ctx, code, room, now);
     const { kicked } = room.step(now);
     await forgetPlayers(ctx, kicked);
-    await persist(ctx, doc, grid, room, { emptySince: undefined });
+
+    // Ask the brain for fresh plans every BRAIN_INTERVAL_MS while the room is
+    // active. It answers into `botCommands`, which a later tick drains; the
+    // timestamp travels with the room row this tick writes anyway.
+    let brainAt = doc.brainAt;
+    if (env.OPENAI_API_KEY && now - (brainAt ?? 0) >= BRAIN_INTERVAL_MS) {
+      brainAt = now;
+      await ctx.scheduler.runAfter(0, internal.brains.think, { code });
+    }
+    await persist(ctx, doc, grid, room, { emptySince: undefined, brainAt });
     // Bots playing for a screen alone run at a slower, cheaper cadence.
     const cadence = room.humanCount === 0 ? AUDIENCE_TICK_MS : TICK_MS;
     await ctx.scheduler.runAfter(cadence, internal.tick.tick, { code });

@@ -22,11 +22,23 @@
       <div id="top-left">
         <div id="room-info"></div>
         <button id="leave" class="secondary">Leave</button>
+        <button id="summon-open" class="secondary" hidden>Summon a rival</button>
       </div>
       <ol id="leaderboard"></ol>
       <div id="score"></div>
       <div id="overlay" hidden></div>
       <div id="touch-hint" hidden>Swipe anywhere to steer</div>
+
+      <!-- Summon a rival: any link (or a sentence) becomes a bot in this room. -->
+      <form id="summon" hidden>
+        <label for="summon-source">Summon a rival from any link</label>
+        <div class="row">
+          <input id="summon-source" placeholder="https://… or describe a rival" autocomplete="off" spellcheck="false" />
+          <button id="summon-go" type="submit">Summon</button>
+        </div>
+        <p id="summon-status" hidden></p>
+        <p class="hint" id="summon-hint">A robot with a personality written from that page joins this arena.</p>
+      </form>
     </div>
 
     <button id="mute" class="icon" title="Mute">🔊</button>

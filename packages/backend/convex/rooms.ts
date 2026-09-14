@@ -34,9 +34,31 @@ export function hydrate(doc: Doc<"rooms">, grid: Doc<"grids"> | null): Room {
     owner: grid ? new Uint8Array(grid.owner) : undefined,
     trail: grid ? new Uint8Array(grid.trail) : undefined,
     gridLog: doc.gridLog.map((p) => ({ ...p, cells: new Uint8Array(p.cells) })),
-    players: doc.players as PlayerState[],
+    players: normalizePlayers(doc.players),
   };
   return Room.hydrate(state, Math.random, makeId);
+}
+
+/**
+ * Stored players as the core expects them. The bot fields the brain added
+ * are optional in the schema so rooms written before it still load; the
+ * core wants them present.
+ */
+export function normalizePlayers(players: Doc<"rooms">["players"]): PlayerState[] {
+  return players.map((p) => ({
+    ...p,
+    dir: p.dir as PlayerState["dir"],
+    nextDir: p.nextDir as PlayerState["nextDir"],
+    bot: p.bot
+      ? {
+          ...p.bot,
+          turnBias: p.bot.turnBias as 1 | 3,
+          plan: p.bot.plan ?? null,
+          persona: p.bot.persona ?? null,
+          summoned: p.bot.summoned ?? false,
+        }
+      : null,
+  }));
 }
 
 /** The patch log as it is stored: `cells` is Convex bytes, not a Uint8Array. */
@@ -89,7 +111,7 @@ export async function persist(
   doc: Doc<"rooms">,
   grid: Doc<"grids">,
   room: Room,
-  extra: { emptySince?: number | undefined } = {},
+  extra: { emptySince?: number | undefined; brainAt?: number } = {},
 ): Promise<void> {
   await ctx.db.patch(doc._id, { ...extra, ...roomFields(room) });
   if (room.gridVersion !== doc.gridVersion) await ctx.db.patch(grid._id, gridFields(room));

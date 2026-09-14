@@ -107,7 +107,7 @@ export function showMenu(error?: string): void {
         </div>
       </details>
       ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
-      <p class="hint">WASD / arrows to steer. Swipe on touch. The robots are AI agents.</p>
+      <p class="hint">WASD / arrows to steer. Swipe on touch. The robots are AI agents; once you're in, summon your own rival from any link.</p>
     </div>
   `;
 
