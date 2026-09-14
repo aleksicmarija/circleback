@@ -1,93 +1,93 @@
 # Deploying Circleback
 
-Two clouds, and **Convex is not deployed to Render**.
+One cloud. Convex runs the backend **and** serves the client, from the same
+deployment, at `https://<deployment>.convex.site`.
 
 ```
-                    ┌──────────────────────────────┐
-   git push         │  Render (static site + CDN)  │
-   + Manual Deploy  │  serves apps/web/dist        │
-        │           └──────────────┬───────────────┘
-        │                          │ 1. browser loads HTML/JS
-        v                          v
-  ┌───────────┐              ┌──────────┐
-  │  GitHub   │              │ browser  │
-  └───────────┘              └────┬─────┘
-                                  │ 2. WebSocket, straight to Convex
-                                  v
-                    ┌──────────────────────────────┐
-                    │  Convex Cloud                │
-                    │  database + functions +      │
-                    │  the realtime sync engine    │
-                    └──────────────────────────────┘
+   npm run deploy
+        │
+        ├─ 1. vite build  (VITE_CONVEX_URL baked in)      apps/web/dist
+        ├─ 2. npx convex deploy                           functions + schema + components
+        └─ 3. upload dist/ to the static-hosting component
+                                                          │
+  browser ──── GET https://<deployment>.convex.site ──────┘   HTML/JS/models from Convex storage
+  browser ──── WebSocket to https://<deployment>.convex.cloud   live queries, mutations
 ```
 
-Render serves the bundle once and is then out of the data path entirely. All
-gameplay traffic goes browser ↔ Convex over a WebSocket.
+The `@convex-dev/static-hosting` component owns `/` on the `.site` URL. The
+app's own HTTP routes (`convex/http.ts`) live under `/api`, which is where
+AgentMail's webhook lands.
 
-## The one command that deploys both halves
+## First-time setup
 
-`render.yaml` sets the build command to:
+1. **Log in and pick a project.** `npx convex login`, then `npx convex dev`
+   once; it creates or links the project and writes `.env.local`.
+2. **Set the deployment variables** on the *production* deployment (add
+   `--prod` to each `env set`, or use the dashboard). The game runs without
+   them, but the sponsor features do not:
 
-```bash
-npm ci && npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'npm run build -w apps/web'
-```
+   | Variable | Needed for | Where to get it |
+   | --- | --- | --- |
+   | `OPENAI_API_KEY` | bot brains and rival personas | platform.openai.com |
+   | `OPENAI_MODEL` | optional, defaults to `gpt-5-mini` | |
+   | `FIRECRAWL_API_KEY` | summoning a rival from a link. **Required by the component at deploy time**: set it before the first push, even if it is a placeholder | firecrawl.dev |
+   | `AGENTMAIL_API_KEY` | the arena inbox | agentmail.to |
+   | `AGENTMAIL_WEBHOOK_SECRET` | verifying inbound mail | AgentMail dashboard, after step 4 |
+   | `AGENTMAIL_INBOX` | the address shown on the spectator screen | step 3 |
 
-`npx convex deploy` does three things, **in this order**:
+3. **Create the inbox** (needs `AGENTMAIL_API_KEY` on the deployment):
 
-1. Reads `CONVEX_DEPLOY_KEY` from the environment and resolves the production
-   deployment's URL.
-2. Runs the `--cmd` with `VITE_CONVEX_URL` injected, so Vite bakes the
-   production URL into the bundle.
-3. **Then** uploads `packages/backend/convex/` to the Convex production
-   deployment and regenerates `_generated`.
+   ```bash
+   npx convex run --prod email:createInbox '{"username":"circleback"}'
+   npx convex env set --prod AGENTMAIL_INBOX circleback@agentmail.to
+   ```
 
-> **Why `--cmd-url-env-var-name` is there.**
-> Convex picks the env var name by looking for `vite` in the **root**
-> `package.json`. In a monorepo Vite lives in `apps/web`, so without help
-> Convex falls back to the generic `CONVEX_URL` — which Vite never exposes to
-> browser code, because only `VITE_`-prefixed variables reach the bundle. The
-> result is a build that succeeds and a page that dies on "VITE_CONVEX_URL is
-> not set". Two things prevent that: `vite` is declared in the root
-> `package.json` devDependencies so detection works, and the flag pins the name
-> so CI cannot guess differently.
->
-> **Why `convex/_generated/` is committed to git.**
-> Step 2 runs *before* step 3. On a fresh CI checkout the client is built
-> before codegen has ever run, so if `_generated/` were gitignored the Render
-> build would fail on a missing `@backend/_generated/api` import.
-> **Whenever you add, rename, or delete a Convex function, commit the changed
-> `_generated/` files along with it.**
-
-## One-time Render setup
-
-1. In the Render dashboard: **New → Blueprint**, and pick `aleksicmarija/circleback`.
-   Render reads `render.yaml` and creates the static site with the right build
-   command, publish path, and SPA rewrite.
-2. It will prompt for **`CONVEX_DEPLOY_KEY`** (declared `sync: false`, so it is
-   never stored in git). Get the value from the
-   [Convex dashboard](https://dashboard.convex.dev) → your project →
-   **Production** deployment → *Settings → General → Generate Production Deploy
-   Key*, with the `deployment:deploy` permission enabled.
-3. Click deploy.
+4. **Register the webhook** in the AgentMail dashboard:
+   `https://<deployment>.convex.site/api/agentmail/webhook`, event
+   `message.received`, and copy the signing secret into
+   `AGENTMAIL_WEBHOOK_SECRET`.
 
 ## Shipping a change
 
-`autoDeploy: false` in `render.yaml`, so pushing to `main` does **not** deploy.
-Nothing reaches players until someone chooses to ship:
+```bash
+npm run deploy
+```
 
-**Render dashboard → the service → Manual Deploy → Deploy latest commit.**
+That is the whole release. It typechecks, builds `apps/web` with the
+production Convex URL, pushes `packages/backend/convex/`, and publishes the
+new `dist/` atomically: visitors never see a page whose assets are missing,
+and a failed upload leaves the previous version live.
 
-That protects a live demo from a bad last-minute push. To switch to
-deploy-on-push later, set `autoDeploy: true` in `render.yaml`.
+To try the hosted build against the **dev** deployment first (same HTTP,
+caching and SPA behaviour as production):
 
-## Environments
+```bash
+npm run deploy:preview
+```
 
-| | Backend | Frontend | Data |
-| --- | --- | --- | --- |
-| Local | your own Convex dev deployment | `localhost:5173` | yours alone |
-| Production | the Convex prod deployment | the Render site | shared, real |
+> **Windows note.** On this machine the Convex CLI's `run` subcommand crashes
+> on exit (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`) when it
+> manages a *local* anonymous deployment, and the hosting uploader reads that
+> as failure. Cloud deployments are not affected. To upload to a local
+> deployment anyway, address it as self-hosted:
+>
+> ```bash
+> CONVEX_DEPLOYMENT= CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210 \
+> CONVEX_SELF_HOSTED_ADMIN_KEY=$(node -p "require('./.convex/local/default/config.json').adminKey") \
+> npm run deploy:preview
+> ```
 
-`npx convex dev` and `npx convex deploy` target different deployments, so local
-work can never touch production data.
+## Why `_generated/` is committed
 
----
+`convex deploy` runs the client build *before* codegen, so a fresh checkout
+must already have `packages/backend/convex/_generated/`. **Whenever you add,
+rename or delete a Convex function or component, commit the changed
+`_generated/` files with it.**
+
+## Checklist before a demo
+
+- `https://<deployment>.convex.site/` opens on a phone and a laptop, Play works
+- `/spectate` shows the arena, the QR code and the summon card
+- Bots show lines above their heads that change every few seconds (OpenAI key is set)
+- "Summon a rival" with a link ends in a robot joining (Firecrawl key is set)
+- An email to the inbox gets a reply with a spectate link (AgentMail webhook is registered)

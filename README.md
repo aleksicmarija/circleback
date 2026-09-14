@@ -1,106 +1,100 @@
 # Circleback · Pets vs Bots
 
 **A real-time multiplayer turf war you can join from any device in five seconds.
-Cute pets claim territory. Robots are AI agents trying to take it back.**
+Cute pets claim territory. The robots are AI agents, and you can summon a new
+one from any link on the web, or by sending the arena an email.**
 
-Built in one day at the [Grok Bot Serbia Hackathon](https://hackathon.cursorserbia.com/),
-Belgrade, 12 September 2026.
+Built for the [Convex All Gas Hackathon](https://luma.com/convex-allgas-hackathon)
+(September 2026). The whole thing runs on Convex: the game loop, the live
+state, the bots' brains, the web reader, the inbox, and the site itself.
 
-- 🎮 **Play:** https://circleback-web-yui1.onrender.com/
-- 📺 **Spectator view:** https://circleback-web-yui1.onrender.com/spectate/
-- 🎥 **Demo video:** https://youtu.be/6QVqxYMYg-8
+- 🎮 **Play:** https://TODO.convex.site/
+- 📺 **Spectator view:** https://TODO.convex.site/spectate
+- 🎥 **Demo video:** TODO
 - 💻 **Source:** https://github.com/aleksicmarija/circleback
 
-Put the **spectator view** on a big screen. It shows the whole arena, the live
-leaderboard, and a QR code. Anyone who scans it lands in the same match.
+Put the **spectator view** on a big screen. It shows the whole arena, the
+live leaderboard, a QR code that drops anyone who scans it into the same
+match, and the address you can email a rival to.
 
 ---
 
 ## The game in 30 seconds
-
-Circleback is a territory game built from scratch in Three.js.
 
 - Pick a pet, press **Play**. You are dropped into the public arena with a
   small blob of turf. You never stop moving; WASD, arrows, or a swipe pick a
   direction.
 - Leave your turf and you draw a trail. Get back home and everything your loop
   enclosed becomes yours, including other players' land.
-- Anyone who drives over a trail kills its owner. That includes your own
-  trail, so don't cross yourself.
-- The arena edge bounces you 90 degrees to a random side. Death wipes your
-  turf; you respawn somewhere fresh 2.5 seconds later.
-- Stop steering for 45 seconds and you are removed from the arena; the game
-  warns you 15 seconds before.
-- The **robots are AI agents**. The board never has fewer than seven pieces:
-  you join alongside six bots, the next six humans each take a bot's seat,
-  anyone after that simply joins, and a bot returns whenever the count
-  drops below seven. The line under a
-  robot's name tells you what it is doing right now.
+- Anyone who drives over a trail kills its owner. That includes your own.
+- The arena edge bounces you. Death wipes your turf; you respawn 2.5 seconds
+  later. Stop steering for 45 seconds and you are removed.
+- **The robots are AI agents.** The board never has fewer than seven pieces:
+  bots fill the seats humans have not taken and hand them back when someone
+  leaves. Every few seconds OpenAI looks at the board and gives each bot a
+  strategy (expand, raid someone's land, hunt someone's trail, defend) and a
+  line to say. The line under a robot's name is what it is doing, or what it
+  thinks of you.
+- **Summon a rival.** Paste any link into the game (a site, a profile, a
+  product, a repo) or describe one in a sentence. Firecrawl reads the page,
+  OpenAI writes a robot with a name, a blurb and a voice from it, and it
+  joins your arena, trash talk included. Or email the link to the arena's
+  inbox and it writes back with a link to watch.
 - Scores are territory percentage. There is no end; the leaderboard is the game.
 
 Works on desktop and phones. Private rooms with 4-letter codes exist for
-playing with friends.
+playing with friends; put the code in the email subject to summon a rival
+into one.
 
 ## How it is built
 
-**One game core, two servers.** The entire rule set (movement, trails,
-flood-fill capture, kills, respawns, bot steering) lives in one pure
-TypeScript package with no DOM, no rendering, and no network code. Two
-different hosts drive that same code unchanged:
+**One game core, two hosts.** The entire rule set (movement, trails,
+flood-fill capture, kills, respawns, bot steering, plan execution) lives in
+one pure TypeScript package with no DOM, no rendering and no network code,
+covered by tests. An in-browser SharedWorker host drives it for zero-setup
+local development; **Convex drives the identical code in production.**
 
-- an **in-browser server** running in a SharedWorker, which is how we
-  prototyped all day with zero infrastructure (two tabs in one browser play
-  against each other), and
-- the **Convex backend**, where a scheduled mutation ticks every room 10 times
-  a second, persisting the room state between invocations.
+**Convex is the whole backend.**
 
-The client does not know or care which one it is talking to. It only speaks
-to a five-method `Backend` interface, and swapping hosts is an environment
-variable.
-
-**The bots are designed to be replaced by real agents.** They already expose
-a `status` line the client renders above their heads, and the core has a
-`setStatus` hook so an external brain can narrate what a bot is doing. The
-message protocol between client and server is transport-agnostic, so any
-agent that can open a WebSocket could join a match as a player. That is the
-direction we want to take this (see the roadmap below).
-
-## How we used the partner stack
-
-| Partner | What it does for Circleback |
+| Convex feature | What it does here |
 | --- | --- |
-| **Grok Bot / Cursor** | The whole codebase was written in the host editor with agents during the hackathon. The commit history is the audit trail. |
-| **Convex** | Production backend. Rooms are Convex documents, a self-rescheduling internal mutation is the authoritative 10 Hz game loop, and one live query per room streams snapshots to every client over Convex's WebSocket. No sockets, no Postgres, no server process of our own. |
-| **Render** | Hosts the static Three.js client from a Blueprint (`render.yaml`). The build command deploys the Convex functions and bakes the production Convex URL into the bundle in one step. |
-| **Kenney (CC0)** | 3D pets and robots, sounds, music, and the display font. Not a hackathon partner, but worth crediting: every asset is handmade by [Kenney](https://kenney.nl) and released as public domain. **No art in this project was AI-generated.** |
+| Scheduled mutations | A self-rescheduling internal mutation is the authoritative 10 Hz game loop: it loads the room, drives a real `Room` from the core, persists what changed, and reschedules itself. |
+| Live queries | One subscription per room streams players plus a byte-packed log of changed cells (a few hundred bytes, not the 8 KB grid) to every player and spectator. The summon panel and the spectator feed are live queries too. |
+| Mutations that never contend | Keypresses, the brain's answers and finished rivals all land in queue tables the tick drains. Nothing but the tick writes a room document, so a busy arena never fights its own game loop. |
+| Actions | The brain and the summon pipeline are actions: they read a compact view of the board through queries, call OpenAI and Firecrawl, and hand results back through mutations. |
+| HTTP actions | AgentMail's webhook is a Convex HTTP route under `/api`. |
+| Components | `@firecrawl/firecrawl-convex` reads the web, `@agentmail/convex` runs the inbox, `@convex-dev/static-hosting` serves the site. Typed `env` declares every key the app needs. |
+| Static hosting | The Three.js client is served from the same deployment as the backend. One command deploys both halves. |
 
-## Roadmap
+**The sponsors do real work.**
 
-Things we designed for but did not finish in the day, roughly in the order
-we'd tackle them.
+- **OpenAI** is the bots' hive mind. Every few seconds, per active room, one
+  Chat Completions call with a strict JSON schema returns a strategy and an
+  optional line for every bot. It also writes every summoned rival's persona.
+  The core executes strategies cell by cell, so a slow answer never stalls
+  the game; an expired plan hands the bot back to its heuristics.
+- **Firecrawl** reads any page a player pastes: main content as markdown,
+  cached for an hour, through the Firecrawl Convex component.
+- **AgentMail** gives the arena an inbox. Inbound mail arrives over a
+  Svix-verified webhook, is parsed for a link, a description and a room
+  code, becomes a summon, and gets a reply from a mutation once the robot is
+  in, with a link to watch it play.
 
-**Agents**
-- [ ] Grok-driven bots via the **xAI API**: the LLM picks a strategy every few
-  seconds (raid, defend, hunt the leader) and the heuristic executes it cell
-  by cell. Trash talk goes into the existing `status` line.
-- [ ] "Describe your bot": a player types a personality in plain language and
-  Grok compiles it into a strategy config.
-- [ ] Bring-your-own-agent: publish the wire protocol so external agents can
-  join a match over a WebSocket and compete against humans and each other.
-- [ ] Run agent brains as **Mozaik** participants on its event bus, so agents
-  react to each other instead of polling.
-- [ ] Run untrusted player-written agents in **Daytona** sandboxes.
+**Honest rendering.** The server is authoritative and there is no
+client-side prediction: an interpolator measures feed jitter and renders just
+behind it, so what you see is what the server said.
 
-**Game**
-- [ ] Kill feed and "you were cut off by" attribution in the spectator view.
-- [ ] Power-ups: speed boost, shield, trail eraser.
-- [ ] Round timer with a winner screen, for demo-friendly matches.
-- [ ] Persistent leaderboard across matches (one Convex table).
-- [ ] On-screen D-pad as an alternative to swipes on phones.
+## Art
 
-**Presentation**
-- [ ] Generate a unique pet skin per player with **Fal.ai** from a prompt.
-- [ ] Rebuild the menu and HUD in **Wonder** so design edits ship as code.
+Every 3D model, sound and font is handmade by [Kenney](https://kenney.nl) and
+released CC0. No art in this project was AI-generated.
+
+## Origins
+
+Circleback started as a one-day build at the Grok Bot Serbia Hackathon in
+Belgrade on 12 September 2026 (pets, bots, the Convex game loop, the
+spectator screen). The AI brains, summoning, the inbox and Convex hosting
+were built for this event; `hackathon.md` is the evidence-based build log.
 
 ---
 
@@ -111,15 +105,15 @@ Repository layout:
 ```
 circleback/
 ├── packages/game-core/      THE GAME. Pure TypeScript rules: grid, trails, capture,
-│                            kills, respawns, bot steering. No DOM, no Three, no network.
+│                            kills, respawns, bot steering and plans. No DOM, no Three, no network.
 ├── packages/local-server/   In-browser server: GameServer (rooms, connections, 10Hz
 │                            loop, heartbeat) plus a 20-line SharedWorker entry.
-├── packages/backend/convex/ Production server: Convex functions that hydrate a Room
-│                            from a document, tick it, and stream snapshots.
+├── packages/backend/convex/ Production server: the tick, the brain, summoning, the inbox,
+│                            and the component config.
 ├── apps/web/                Three.js client. Talks only to the `Backend` interface in
 │                            src/backend/, with local and Convex implementations.
-│   └── spectate/index.html  Spectator page: whole arena, leaderboard, QR code.
-└── render.yaml              Render Blueprint for the static site.
+│   └── spectate.html        Spectator page: whole arena, leaderboard, QR code, summon feed.
+└── docs/DEPLOYING.md        Keys, inbox setup, and the one-command deploy.
 ```
 
 ## Running it
@@ -130,88 +124,68 @@ npm run dev:web      # http://localhost:5173 -- that's it, no accounts, no cloud
 ```
 
 Press **Play** to drop into the public arena. Open `/spectate` on a big
-screen for the spectator view: whole arena, leaderboard, and a QR code that
-sends phones to the same room (`/spectate?room=ABCD` for private rooms). Open a second tab and press Play
-again: both tabs share one SharedWorker, so you are playing against yourself.
-"Host new room" / "Join room" give you private 4-letter rooms.
+screen for the spectator view (`/spectate?room=ABCD` for private rooms).
+Open a second tab and press Play again: both tabs share one SharedWorker, so
+you are playing against yourself. The in-browser host has no web access, so
+summoning and the brain only exist against Convex.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev:web` | Vite dev server only, running the whole game (backend included) in a Web Worker -- the zero-setup path, no Convex account needed |
-| `npm run dev` | Convex watcher plus Vite together, for full-stack work against the Convex backend |
-| `npm run build` | Production build into `apps/web/dist` |
+| `npm run dev:web` | Vite dev server only, whole game in a Web Worker, no Convex account needed |
+| `npm run dev` | Convex watcher plus Vite together, for full-stack work |
+| `npm run build` | Production build into `apps/web/dist` (always targets Convex) |
 | `npm run typecheck` | Typechecks core, local server, client and the Convex functions |
+| `npm test -w packages/game-core` | Runs the core's tests |
+| `npm run deploy` | Builds, pushes the backend, publishes the site to `https://<deployment>.convex.site` |
 
-Optional `.env.local` settings (see `.env.example`):
-
-- `VITE_BACKEND=convex` switches the client from the in-browser simulation to
-  the Convex backend (default is `local`). Used together with `npm run dev`.
-- `VITE_FAKE_LATENCY_MS=120` adds simulated round-trip latency to the local
-  backend. Use it to check that interpolation and input feel hold up.
+Optional `.env.local` settings are listed in `.env.example`; the sponsor keys
+live on the Convex deployment, see [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 ## How the pieces fit
 
 ```
-   keys / swipe                 Backend interface                 GameServer
- ┌────────────┐  setDirection  ┌──────────────┐  postMessage   ┌──────────────┐
- │  main.ts   │ ─────────────▶ │ backend/     │ ─────────────▶ │ worker.ts    │
- │  scene.ts  │ ◀───────────── │   local.ts   │ ◀───────────── │ server.ts    │
- └────────────┘   snapshots    └──────────────┘   snapshots    │   Room x N   │
-   60 fps, interpolated                                        │  (game-core) │
-                                                               └──────────────┘
-                                                                  ticks at 10Hz
+   keys / swipe                 Backend interface                 Convex
+ ┌────────────┐  setDirection  ┌──────────────┐   mutation     ┌──────────────────────┐
+ │  main.ts   │ ─────────────▶ │ backend/     │ ─────────────▶ │ inputs / botCommands │──┐
+ │  scene.ts  │ ◀───────────── │   convex.ts  │ ◀───────────── │ game.snapshot (live) │  │ drained
+ └────────────┘   snapshots    └──────────────┘                └──────────────────────┘  │ by
+   60 fps, interpolated                                        ┌──────────────────────┐  │
+                                                               │ tick.ts  (10 Hz)     │◀─┘
+                                                               │   Room from @game/core
+                                                               │   every ~7s ─▶ brains.think ─▶ OpenAI
+                                                               └──────────────────────┘
+   "Summon a rival" ──▶ summon.request ──▶ summon.run: Firecrawl ─▶ OpenAI ─▶ botCommands ─▶ tick spawns it
+   email ──▶ /api/agentmail/webhook ──▶ email.onMessageReceived ──▶ same pipeline ──▶ email.answer
 ```
 
 - **The server is authoritative.** The client sends a direction, never a
-  position. Every 100ms the server steps every room and pushes a `Snapshot`
-  to subscribers. Snapshots carry a short log of changed cells, a few
-  hundred bytes, instead of the 8 KB grid; a client that falls behind the
-  log fetches the full grid once.
-- **The client renders slightly in the past.** The interpolator measures how
-  evenly snapshots arrive and renders just behind the worst recent gap, so
-  motion stays smooth without a fixed delay. Everything on screen, your own
-  piece included, is what the server said; nothing is predicted client-side,
-  so a slow tick shows as a brief pause rather than a piece that jumps.
-- **Connections have a heartbeat.** A tab that vanishes without saying
-  goodbye is dropped after 8s and its player removed. Rooms with no humans
-  stop simulating and are deleted after 30s.
-- **Ownership is enforced server-side.** A connection can only steer or
-  remove players it created.
+  position. Every 100 ms the tick steps the room and the live query pushes a
+  `Snapshot` to subscribers.
+- **The brain never steers.** It returns `{ id, mode, target, say }` per bot;
+  `decideBot` in the core turns the mode into look-ahead preferences (the
+  target's trail is worth chasing, the target's land is worth looping
+  through, empty ground is worth claiming, home is worth staying near).
+- **Rooms with no audience pause.** Bots play for humans or for a spectator
+  screen with a heartbeat; otherwise the loop polls slowly and the room is
+  deleted after 30 s.
 
 ## The Convex backend
 
-`packages/backend/convex/` is a second, production `Backend` implementation
-that behaves identically to the local one. Since a Convex mutation is a fresh
-invocation every time (nothing survives between calls except the database),
-its `tick.ts` reloads the room's persisted state, drives a real `Room`
-instance from `@game/core` exactly like `GameServer` does, and persists what
-changed -- see `Room.serialize()` / `Room.hydrate()` in `game-core/src/room.ts`.
+`packages/backend/convex/`:
 
-- **Schema** (`schema.ts`): a `rooms` row holds the room state as flat
-  top-level fields; the two 4 KB grid layers live in a separate `grids` row.
-  The snapshot query re-runs on every tick and never returns the layers, so
-  keeping them apart means it reads about 1 KB instead of 9, and the tick
-  writes the grid row only when the grid changed. Each player's territory
-  count is persisted too, so scoring needs no grid. `playerRooms` mirrors
-  `GameServer`'s in-memory `playerId -> connection` map, since `leaveRoom`/
-  `setDirection` only take a player id.
-- **`rooms.ts`** has `create` / `join` / `leave`, mirroring `GameServer`'s
-  methods of the same shape.
-- **`tick.ts`** is the scheduled loop: it reschedules itself every `TICK_MS`
-  and stops for good once a room's document is deleted (idle rooms are
-  deleted after `ROOM_IDLE_MS`).
-- **`game.ts`** has the `snapshot` query the client subscribes to (players
-  plus the grid change log, never the byte layers), the one-shot `grid` query
-  a client calls when it falls behind that log, and `setDirection`, which only
-  inserts into the `inputs` table so a keypress never contends with the tick's
-  write of the room document. The tick drains `inputs` before it steps.
+- **`schema.ts`**: `rooms` (flat state, players with their bot plans and
+  personas), `grids` (the two byte layers, kept out of the live query),
+  `playerRooms`, `inputs`, `botCommands` (brain answers and rivals to spawn),
+  `summons` (each summon's progress, followed live by the client).
+- **`tick.ts`**: the loop. Drains inputs and bot commands, steps the room,
+  schedules the brain, persists.
+- **`brains.ts`**: `view` (the board without the grid), `think` (OpenAI),
+  `command` (queue the answer).
+- **`summon.ts`**: `request` (queue), `run` (Firecrawl, OpenAI, stage the
+  bot), `status` / `recent` / `capabilities` (live queries for the UI).
+- **`email.ts`** and **`http.ts`**: the AgentMail webhook, the mail parser,
+  and the reply.
+- **`convex.config.ts`**: components and typed env.
 
-Nothing in `packages/game-core` or `packages/local-server/src/server.ts`
-knows which backend is driving it, and the client stays as it is either way,
-because it only ever imports `./backend`.
-
-## Deploying
-
-Render serves the static client; Convex hosts the backend itself. The build
-command does both halves in one step. Setup, deploy keys, and the shipping
-checklist live in [docs/DEPLOYING.md](docs/DEPLOYING.md).
+Everything a mutation writes to a room document happens in `tick.ts`; that
+one rule is what keeps a full arena responsive.
