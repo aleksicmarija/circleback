@@ -86,11 +86,4 @@ export default defineSchema({
     dir: v.number(),
     at: v.number(),
   }).index("by_code", ["code"]),
-
-  // Pipeline smoke test only (apps/smoke + smoke.ts). Unrelated to the game.
-  smoke_pings: defineTable({
-    sender: v.string(),
-    sentAt: v.number(),
-    at: v.number(),
-  }).index("by_at", ["at"]),
 });

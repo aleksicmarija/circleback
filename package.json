@@ -14,11 +14,10 @@
     "dev": "concurrently -n convex,web -c cyan,magenta \"npm:dev:convex\" \"npm:dev:web\"",
     "dev:web": "npm run dev -w apps/web",
     "dev:convex": "convex dev",
-    "dev:smoke": "npm run dev -w apps/smoke",
     "build": "npm run build -w apps/web",
-    "build:smoke": "npm run build -w apps/smoke",
-    "typecheck": "tsc -p packages/game-core --noEmit && tsc -p packages/local-server --noEmit && tsc -p apps/web --noEmit && tsc -p apps/smoke --noEmit && tsc -p packages/backend/convex --noEmit",
-    "deploy": "convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd \"npm run build -w apps/web\"",
+    "typecheck": "tsc -p packages/game-core --noEmit && tsc -p packages/local-server --noEmit && tsc -p apps/web --noEmit && tsc -p packages/backend/convex --noEmit",
+    "deploy": "static-hosting deploy --dist apps/web/dist --build-command \"npm run build -w apps/web\"",
+    "deploy:preview": "static-hosting upload --build --dist apps/web/dist --build-command \"npm run build -w apps/web\"",
     "codegen": "convex codegen"
   },
   "devDependencies": {
@@ -27,6 +26,9 @@
     "vite": "^8.0.0"
   },
   "dependencies": {
+    "@agentmail/convex": "^0.1.0",
+    "@convex-dev/static-hosting": "^0.2.1",
+    "@firecrawl/firecrawl-convex": "^0.1.1",
     "convex": "^1.45.0"
   }
 }

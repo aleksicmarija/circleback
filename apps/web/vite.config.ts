@@ -7,12 +7,13 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 /**
  * Serves the spectator page at a clean `/spectate` URL in dev and preview.
  * Vite's SPA fallback would otherwise hand `/spectate` to index.html. In
- * production the same mapping is a rewrite rule in render.yaml.
+ * production (Convex static hosting) the SPA fallback does the same, and
+ * the inline script in index.html forwards the visitor to /spectate.html.
  */
 function cleanSpectateUrl(): Plugin {
   const rewrite = (server: { middlewares: { use(fn: (req: { url?: string }, res: unknown, next: () => void) => void): void } }) => {
     server.middlewares.use((req, _res, next) => {
-      if (req.url && /^\/spectate(\?|$)/.test(req.url)) req.url = req.url.replace(/^\/spectate/, "/spectate/index.html");
+      if (req.url && /^\/spectate\/?(\?|$)/.test(req.url)) req.url = req.url.replace(/^\/spectate\/?/, "/spectate.html");
       next();
     });
   };
@@ -39,8 +40,9 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: resolve(here, "index.html"),
-        // Built as spectate/index.html so `/spectate` works on any static host.
-        spectate: resolve(here, "spectate/index.html"),
+        // Built as spectate.html, a real file, so it is served even by hosts
+        // whose SPA fallback hands every extension-less path to index.html.
+        spectate: resolve(here, "spectate.html"),
       },
     },
   },

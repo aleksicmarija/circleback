@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>Circleback · Pets vs Bots</title>
     <script>
-      // Static hosts with a catch-all rewrite hand /spectate (no trailing slash)
-      // to this page. Send it on to the spectator page before anything loads.
-      if (/^\/spectate\/?$/.test(location.pathname) && !location.pathname.endsWith("/")) {
-        location.replace("/spectate/" + location.search + location.hash);
+      // Static hosts with an SPA fallback hand /spectate (an extension-less
+      // path) to this page. Send it on to the spectator page before anything loads.
+      if (/^\/spectate\/?$/.test(location.pathname)) {
+        location.replace("/spectate.html" + location.search + location.hash);
       }
     </script>
     <link rel="stylesheet" href="/src/style.css" />

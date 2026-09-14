@@ -10,7 +10,6 @@
 
 import type * as game from "../game.js";
 import type * as rooms from "../rooms.js";
-import type * as smoke from "../smoke.js";
 import type * as tick from "../tick.js";
 
 import type {
@@ -22,7 +21,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   game: typeof game;
   rooms: typeof rooms;
-  smoke: typeof smoke;
   tick: typeof tick;
 }>;
 
@@ -52,4 +50,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
+};

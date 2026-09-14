@@ -1,7 +1,7 @@
 /**
  * Spectator screen: the whole arena from above, the leaderboard, and a QR
  * code that sends phones into the same room. Meant for a projector.
- * Served at /spectate, or /spectate?room=ABCD for a private room.
+ * Served at /spectate (forwarded to /spectate.html), or /spectate?room=ABCD for a private room.
  */
 import QRCode from "qrcode";
 import { DEFAULT_ROOM_CODE, colorForSlot, BOT_SKINS, PET_SKINS, type Snapshot } from "@core";
